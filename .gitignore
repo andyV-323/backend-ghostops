@@ -1,0 +1,36 @@
+# Node.js dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Logs & Debugging
+logs/
+*.log
+npm-debug.log*
+yarn-error.log
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.production.local
+
+# Output & Build Files
+dist/
+.tmp/
+
+# AWS & Deployment
+.elasticbeanstalk/
+.aws/
+*.pem
+
+# Misc
+.DS_Store
+.vscode/
+*.swp
+*.swo
+Thumbs.db
