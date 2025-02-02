@@ -3,40 +3,71 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
+const operatorRoutes = require("./routes/operatorRoutes");
+const teamRoutes = require("./routes/teamRoutes");
+const squadRoutes = require("./routes/squadRoutes");
+const infirmaryRoutes = require("./routes/infirmaryRoutes");
+const memorialRoutes = require("./routes/memorialRoutes");
+const missionRoutes = require("./routes/missionRoutes");
 
 const app = express();
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
+//Ensures cognito tokens are valid
 const verifier = CognitoJwtVerifier.create({
-  userPoolId: "us-east-1_GMrBu64Hs",
+  userPoolId: process.env.USER_POOL_ID,
   tokenUse: "access",
-  clientId: "6f6mo3220ct1sdu9dum08hdk96",
+  clientId: process.env.CLIENT_ID,
 });
 
+//Middleware
+// Attach `userId` from Cognito to `req.userId`
 async function authenticate(req, res, next) {
   try {
-    const token = req.headers.authorization.split(" ")[1]; // Get JWT from Header
-    await verifier.verify(token);
+    const token = req.headers.authorization.split(" ")[1];
+    const payload = await verifier.verify(token);
+    req.userId = payload.sub;
     next();
   } catch (error) {
     res.status(401).json({ message: "Unauthorized" });
   }
 }
 
-app.use("/api/protected", authenticate);
+//Debugging: Logs Before Loading Routes
+console.log("Server starting...");
+console.log("Loading Operator Routes...");
 
+// Log Incoming Requests Before They Reach Routes
+app.use((req, res, next) => {
+  console.log(`Incoming Request: ${req.method} ${req.url}`);
+  console.log("Headers:", req.headers);
+  console.log("Raw Body:", req.body);
+  next();
+});
+
+//Protected Routes with Cognito Auth
+app.use("/api/operators", authenticate, operatorRoutes);
+app.use("/api/teams", authenticate, teamRoutes);
+app.use("/api/squads", authenticate, squadRoutes);
+app.use("/api/infirmary", authenticate, infirmaryRoutes);
+app.use("/api/memorial", authenticate, memorialRoutes);
+app.use("/api/missions", authenticate, missionRoutes);
+
+console.log("Operator Routes Successfully Registered!");
+
+//MongoDB Connection
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected"))
   .catch((err) => console.error("MongoDB Connection Error:", err));
 
-app.get("/", (req, res) => {
-  res.send("GhostOps API is running");
-});
-app.get("/api/health", (req, res) => {
-  res.status(200).json({ message: "API is working!" });
-});
+//Health Check Route
+app.get("/api/health", (req, res) =>
+  res.status(200).json({ message: "API is working!" })
+);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
