@@ -1,6 +1,11 @@
+/** @format */
+
 const express = require("express");
 const router = express.Router();
 const teamController = require("../controllers/TeamController");
+const { removeOperatorFromTeams } = require("../controllers/TeamController");
+
+router.delete("/removeOperator/:operatorId", removeOperatorFromTeams);
 
 //API Routes for Teams
 router.post("/", teamController.createTeam);

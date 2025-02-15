@@ -1,3 +1,5 @@
+/** @format */
+
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
@@ -18,22 +20,22 @@ app.use(cors());
 
 //Ensures cognito tokens are valid
 const verifier = CognitoJwtVerifier.create({
-  userPoolId: process.env.USER_POOL_ID,
-  tokenUse: "access",
-  clientId: process.env.CLIENT_ID,
+	userPoolId: process.env.USER_POOL_ID,
+	tokenUse: "access",
+	clientId: process.env.CLIENT_ID,
 });
 
 //Middleware
 // Attach `userId` from Cognito to `req.userId`
 async function authenticate(req, res, next) {
-  try {
-    const token = req.headers.authorization.split(" ")[1];
-    const payload = await verifier.verify(token);
-    req.userId = payload.sub;
-    next();
-  } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-  }
+	try {
+		const token = req.headers.authorization.split(" ")[1];
+		const payload = await verifier.verify(token);
+		req.userId = payload.sub;
+		next();
+	} catch (error) {
+		res.status(401).json({ message: "Unauthorized" });
+	}
 }
 
 //Debugging: Logs Before Loading Routes
@@ -42,10 +44,10 @@ console.log("Loading Operator Routes...");
 
 // Log Incoming Requests Before They Reach Routes
 app.use((req, res, next) => {
-  console.log(`Incoming Request: ${req.method} ${req.url}`);
-  console.log("Headers:", req.headers);
-  console.log("Raw Body:", req.body);
-  next();
+	console.log(`Incoming Request: ${req.method} ${req.url}`);
+	console.log("Headers:", req.headers);
+	console.log("Raw Body:", req.body);
+	next();
 });
 
 //Protected Routes with Cognito Auth
@@ -60,13 +62,13 @@ console.log("Operator Routes Successfully Registered!");
 
 //MongoDB Connection
 mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.error("MongoDB Connection Error:", err));
+	.connect(process.env.MONGO_URI)
+	.then(() => console.log("MongoDB Connected"))
+	.catch((err) => console.error("MongoDB Connection Error:", err));
 
 //Health Check Route
 app.get("/api/health", (req, res) =>
-  res.status(200).json({ message: "API is working!" })
+	res.status(200).json({ message: "API is working!" })
 );
 
 const PORT = process.env.PORT || 8080;
