@@ -1,5 +1,3 @@
-/** @format */
-
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
@@ -37,18 +35,6 @@ async function authenticate(req, res, next) {
 		res.status(401).json({ message: "Unauthorized" });
 	}
 }
-
-//Debugging: Logs Before Loading Routes
-console.log("Server starting...");
-console.log("Loading Operator Routes...");
-
-// Log Incoming Requests Before They Reach Routes
-app.use((req, res, next) => {
-	console.log(`Incoming Request: ${req.method} ${req.url}`);
-	console.log("Headers:", req.headers);
-	console.log("Raw Body:", req.body);
-	next();
-});
 
 //Protected Routes with Cognito Auth
 app.use("/api/operators", authenticate, operatorRoutes);

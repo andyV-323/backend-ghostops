@@ -1,20 +1,18 @@
-/** @format */
-
 const Memorial = require("../models/Memorial");
 const Operator = require("../models/Operator");
 
 //POST Operator to Memorial
 exports.addToMemorial = async (req, res) => {
 	try {
-		const userId = req.userId; // Extracted from the token middleware
+		const userId = req.userId;
 		const { createdBy, operator, name, dateOfDeath } = req.body;
-		// Ensure the operator exists in the database
+		// operator exists in the database
 		const existingOperator = await Operator.findById(operator);
 		if (!existingOperator) {
 			return res.status(404).json({ message: "Operator not found" });
 		}
 
-		// Ensure the operator is KIA before adding to memorial
+		// if KIA add to memorial schema
 		if (existingOperator.status !== "KIA") {
 			return res.status(400).json({ message: "Operator is not KIA" });
 		}
@@ -34,21 +32,17 @@ exports.addToMemorial = async (req, res) => {
 		});
 
 		await memorialEntry.save();
-		console.log("✅ Operator added to Memorial:", memorialEntry);
 		res.status(201).json(memorialEntry);
 	} catch (error) {
-		console.error("❌ ERROR adding to Memorial:", error);
+		console.error("ERROR adding to Memorial:", error);
 		res.status(500).json({ message: "Server Error", error: error.message });
 	}
 };
 
-//GET All Memorialized Operators
+//GET All Memorial schema Operators
 exports.getMemorializedOperators = async (req, res) => {
 	try {
 		const userId = req.userId;
-		console.log(
-			`Incoming GET Request for Memorialized Operators from User: ${userId}`
-		);
 
 		if (!userId) {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
@@ -57,7 +51,6 @@ exports.getMemorializedOperators = async (req, res) => {
 		const memorialList = await Memorial.find({ createdBy: userId }).populate(
 			"operator"
 		);
-		console.log("Retrieved Memorialized Operators:", memorialList);
 		res.status(200).json(memorialList);
 	} catch (error) {
 		console.error("Error Fetching Memorial Data:", error.message);
@@ -65,12 +58,11 @@ exports.getMemorializedOperators = async (req, res) => {
 	}
 };
 
-//GET a Single Memorialized Operator by ID
+//GET a Single Memorial Operator by ID
 exports.getMemorializedOperatorById = async (req, res) => {
 	try {
 		const userId = req.userId;
 		const memorialId = req.params.id;
-		console.log(`Incoming GET Request for Memorial Operator ID: ${memorialId}`);
 
 		if (!userId) {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
@@ -98,9 +90,6 @@ exports.removeFromMemorial = async (req, res) => {
 	try {
 		const userId = req.userId;
 		const memorialId = req.params.id;
-		console.log(
-			`Incoming DELETE Request for Memorial Operator ID: ${memorialId}`
-		);
 
 		if (!userId) {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });

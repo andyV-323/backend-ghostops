@@ -1,5 +1,3 @@
-/** @format */
-
 const mongoose = require("mongoose");
 
 const operatorSchema = new mongoose.Schema({
@@ -67,7 +65,7 @@ const operatorSchema = new mongoose.Schema({
 		default: null,
 	},
 	image: { type: String, default: "/ghost/Default.png" },
-	bio: { type: String, default: "null" },
+	bio: { type: String, default: "No Bio Available" },
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);

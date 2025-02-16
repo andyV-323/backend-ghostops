@@ -1,5 +1,4 @@
-/** @format */
-const Infirmary = require("../models/Infirmary"); // ✅ Import the Infirmary Model
+const Infirmary = require("../models/Infirmary");
 const Operator = require("../models/Operator");
 
 const express = require("express");
@@ -20,7 +19,7 @@ router.get("/", async (req, res) => {
 		);
 		res.json(injuredOperators);
 	} catch (error) {
-		console.error("❌ ERROR fetching injured operators:", error);
+		console.error("ERROR fetching injured operators:", error);
 		res.status(500).json({ error: "Failed to fetch injured operators" });
 	}
 });
@@ -45,7 +44,7 @@ router.put("/recover/:id", async (req, res) => {
 
 		res.json({ message: "Operator recovered successfully" });
 	} catch (error) {
-		console.error("❌ ERROR recovering operator:", error);
+		console.error("ERROR recovering operator:", error);
 		res.status(500).json({ error: "Failed to recover operator" });
 	}
 });

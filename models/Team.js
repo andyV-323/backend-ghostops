@@ -1,5 +1,3 @@
-/** @format */
-
 const mongoose = require("mongoose");
 
 const teamSchema = new mongoose.Schema({
@@ -10,7 +8,7 @@ const teamSchema = new mongoose.Schema({
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "Operator",
 		},
-	], //Foreign Key
+	],
 	name: { type: String, required: true },
 });
 

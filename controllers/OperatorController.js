@@ -1,21 +1,15 @@
-/** @format */
-
 const Operator = require("../models/Operator");
 
-//POST a New Operator
 // POST a New Operator
 exports.createOperator = async (req, res) => {
 	try {
 		const userId = req.userId;
-		console.log("Incoming CREATE Request for Operator:", req.body);
 
 		if (!userId) {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
-
-		// Ensure gear & weapons use image URLs
 		const operatorData = {
-			createdBy: userId, // ✅ Link operator to logged-in user
+			createdBy: userId,
 			name: req.body.name,
 			callSign: req.body.callSign,
 			sf: req.body.sf,
@@ -25,13 +19,12 @@ exports.createOperator = async (req, res) => {
 			rank: req.body.rank,
 			gear: req.body.gear.startsWith("/gear/")
 				? req.body.gear
-				: "/gear/default.png", // ✅ Ensure it's an image URL
+				: "/gear/default.png",
 			secondaryClass: req.body.secondaryClass,
 			secondaryGear: req.body.secondaryGear.startsWith("/gear/")
 				? req.body.secondaryGear
 				: "/gear/default.png",
 
-			// ✅ Ensure weapons are image URLs or use defaults
 			primaryWeapon1: req.body.primaryWeapon1.startsWith("/icons/")
 				? req.body.primaryWeapon1
 				: "/icons/empty.svg",
@@ -55,11 +48,10 @@ exports.createOperator = async (req, res) => {
 			bio: req.body.bio || "null",
 		};
 
-		// ✅ Create new operator using validated data
+		//Create new operator using validated data
 		const operator = new Operator(operatorData);
 
 		await operator.save();
-		console.log("Operator Created:", operator);
 		res
 			.status(201)
 			.json({ message: "Operator created successfully!", operator });
@@ -73,13 +65,12 @@ exports.createOperator = async (req, res) => {
 exports.getOperators = async (req, res) => {
 	try {
 		const userId = req.userId;
-		console.log(`Incoming GET Request for Operators from User: ${userId}`);
 
 		if (!userId) {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
 
-		// ✅ Only return operators created by the logged-in user
+		//Only return operators created by the logged-in user
 		const operators = await Operator.find({ createdBy: userId });
 
 		res.status(200).json(operators);
@@ -135,11 +126,7 @@ exports.deleteOperator = async (req, res) => {
 		const userId = req.userId;
 		const operatorId = req.params.id;
 
-		console.log(`Incoming DELETE Request for Operator ID: ${operatorId}`);
-		console.log(` Request from User: ${userId}`);
-
 		if (!userId) {
-			console.log("Unauthorized Request (No User ID)");
 			return res.status(401).json({ message: "Unauthorized" });
 		}
 
@@ -149,13 +136,11 @@ exports.deleteOperator = async (req, res) => {
 		});
 
 		if (!operator) {
-			console.log(`Operator Not Found or Unauthorized: ${operatorId}`);
 			return res
 				.status(404)
 				.json({ message: "Operator not found or unauthorized" });
 		}
 
-		console.log("Operator Successfully Deleted:", operator);
 		res.status(200).json({ message: "Operator deleted successfully!" });
 	} catch (error) {
 		console.error("Error Deleting Operator:", error.message);

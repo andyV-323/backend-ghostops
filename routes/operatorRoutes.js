@@ -1,9 +1,7 @@
-/** @format */
-
 const express = require("express");
 const router = express.Router();
 const operatorController = require("../controllers/OperatorController");
-const Operator = require("../models/Operator"); // ✅ Import the Operator model
+const Operator = require("../models/Operator");
 
 // Define Routes
 router.post("/", operatorController.createOperator);
@@ -12,13 +10,12 @@ router.get("/:id", operatorController.getOperatorById);
 router.put("/:id", operatorController.updateOperator);
 router.delete("/:id", operatorController.deleteOperator);
 
-// ✅ Fix: Update Operator Bio Route
+//Update Operator Bio Route
 router.put("/:id/bio", async (req, res) => {
 	try {
 		const { id } = req.params;
 		const { bio } = req.body;
 
-		// ✅ Ensure `bio` is provided
 		if (!bio) {
 			return res.status(400).json({ error: "Bio content is required." });
 		}
@@ -35,7 +32,7 @@ router.put("/:id/bio", async (req, res) => {
 
 		res.json(updatedOperator);
 	} catch (error) {
-		console.error("❌ ERROR updating operator bio:", error);
+		console.error("ERROR updating operator bio:", error);
 		res.status(500).json({ error: "Failed to update bio" });
 	}
 });
@@ -56,7 +53,7 @@ router.put("/:id/status", async (req, res) => {
 
 		res.json(updatedOperator);
 	} catch (error) {
-		console.error("❌ ERROR updating operator status:", error);
+		console.error("ERROR updating operator status:", error);
 		res.status(500).json({ error: "Failed to update status" });
 	}
 });
