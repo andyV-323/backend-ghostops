@@ -1,5 +1,54 @@
 const Infirmary = require("../models/Infirmary");
 const Operator = require("../models/Operator");
+const {
+	EventBridgeClient,
+	PutEventsCommand,
+} = require("@aws-sdk/client-eventbridge");
+
+// Initialize AWS EventBridge Client
+const eventBridge = new EventBridgeClient({ region: "us-east-1" }); // Update with your region
+
+const EVENT_BUS_NAME = "default"; // Change if using a custom event bus
+
+// Function to send event to AWS EventBridge
+const triggerOperatorRecovery = async (operatorId) => {
+	try {
+		const command = new PutEventsCommand({
+			Entries: [
+				{
+					Source: "ghostopsai.operators",
+					DetailType: "OperatorInjured",
+					Detail: JSON.stringify({ operator_id: operatorId }),
+					EventBusName: EVENT_BUS_NAME,
+				},
+			],
+		});
+
+		await eventBridge.send(command);
+		console.log(`Event sent for Operator ${operatorId}`);
+	} catch (error) {
+		console.error("Failed to send event to EventBridge:", error);
+	}
+};
+async function sendRecoveryEvent(operatorId) {
+	try {
+		const command = new PutEventsCommand({
+			Entries: [
+				{
+					Source: "ghostopsai.operators",
+					DetailType: "OperatorRecovered",
+					Detail: JSON.stringify({ operator_id: operatorId }),
+					EventBusName: "default",
+				},
+			],
+		});
+
+		await eventBridge.send(command);
+		console.log(`Event sent: OperatorRecovered for ${operatorId}`);
+	} catch (error) {
+		console.error("Failed to send EventBridge event:", error);
+	}
+}
 
 //POST Operator to Infirmary
 exports.addInjuredOperator = async (req, res) => {
@@ -32,6 +81,9 @@ exports.addInjuredOperator = async (req, res) => {
 
 		await injuredOperator.save();
 		console.log("Operator Added to Infirmary:", injuredOperator);
+
+		// Trigger AWS EventBridge to Start Step Functions
+		await triggerOperatorRecovery(req.body.operator);
 
 		res.status(201).json({
 			message: "Operator added to infirmary successfully!",
@@ -109,7 +161,13 @@ exports.updateInjury = async (req, res) => {
 				.json({ message: "Injured Operator not found or unauthorized" });
 		}
 
-		console.log("Injury Updated:", updatedInjury);
+		//Send Recovery Event to AWS EventBridge with Execution ARN
+		if (updatedInjury.executionArn) {
+			await sendRecoveryEvent(
+				updatedInjury.operator._id,
+				updatedInjury.executionArn
+			);
+		}
 		res
 			.status(200)
 			.json({ message: "Injury updated successfully!", updatedInjury });

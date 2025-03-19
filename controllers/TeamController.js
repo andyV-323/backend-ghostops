@@ -9,7 +9,7 @@ exports.createTeam = async (req, res) => {
 	try {
 		console.log("Incoming CREATE Team Request:", req.body);
 
-		// ✅ Validate required fields
+		// Validate required fields
 		const { createdBy, name, operators } = req.body;
 		if (!createdBy || !name || !Array.isArray(operators)) {
 			return res

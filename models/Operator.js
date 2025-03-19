@@ -10,7 +10,7 @@ const operatorSchema = new mongoose.Schema({
 	rank: { type: String, default: "Unknown" },
 	class: {
 		type: String,
-		required: true,
+		default: "Assault",
 	},
 	gear: {
 		type: String,

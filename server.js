@@ -44,8 +44,6 @@ app.use("/api/infirmary", authenticate, infirmaryRoutes);
 app.use("/api/memorial", authenticate, memorialRoutes);
 app.use("/api/missions", authenticate, missionRoutes);
 
-console.log("Operator Routes Successfully Registered!");
-
 //MongoDB Connection
 mongoose
 	.connect(process.env.MONGO_URI)

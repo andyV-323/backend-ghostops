@@ -6,7 +6,13 @@ const Operator = require("../models/Operator");
 
 router.get("/operators", async (req, res) => {
 	try {
+		const userId = req.userId; // Get logged-in user ID
 		const { status } = req.query;
+
+		// Ensure user is authenticated
+		if (!userId) {
+			return res.status(401).json({ message: "Unauthorized: No User ID" });
+		}
 
 		// Validate status (should only be "KIA")
 		if (status !== "KIA") {
@@ -14,7 +20,7 @@ router.get("/operators", async (req, res) => {
 		}
 
 		// Fetch Memorial records and populate operator details
-		const memorializedOperators = await Memorial.find()
+		const memorializedOperators = await Memorial.find({ createdBy: userId })
 			.populate("operator")
 			.exec();
 
@@ -23,11 +29,9 @@ router.get("/operators", async (req, res) => {
 			(entry) => entry.operator && entry.operator.status === "KIA"
 		);
 
-		console.log("🟢 DEBUG: Retrieved KIA Operators ->", KIAOperators);
-
 		res.status(200).json(KIAOperators);
 	} catch (error) {
-		console.error("❌ ERROR fetching KIA operators:", error.message);
+		console.error("ERROR fetching KIA operators:", error.message);
 		res.status(500).json({ message: "Internal Server Error" });
 	}
 });
