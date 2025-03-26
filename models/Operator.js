@@ -14,13 +14,13 @@ const operatorSchema = new mongoose.Schema({
 	},
 	gear: {
 		type: String,
-		default: "/gear/none.png",
+		default: "/icons/default.svg",
 	},
 	secondaryClass: {
 		type: String,
 		default: null,
 	},
-	secondaryGear: { type: String, default: "/gear/none.png" },
+	secondaryGear: { type: String, default: "/icons/default.svg" },
 
 	status: {
 		type: String,

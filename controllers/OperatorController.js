@@ -17,13 +17,13 @@ exports.createOperator = async (req, res) => {
 			image: req.body.image || "/ghost/Default.png",
 			class: req.body.class,
 			rank: req.body.rank,
-			gear: req.body.gear.startsWith("/gear/")
+			gear: req.body.gear.startsWith("/icons/")
 				? req.body.gear
-				: "/gear/default.png",
+				: "/icons/default.svg",
 			secondaryClass: req.body.secondaryClass,
-			secondaryGear: req.body.secondaryGear.startsWith("/gear/")
+			secondaryGear: req.body.secondaryGear.startsWith("/icons/")
 				? req.body.secondaryGear
-				: "/gear/default.png",
+				: "/icons/default.svg",
 
 			primaryWeapon1: req.body.primaryWeapon1.startsWith("/icons/")
 				? req.body.primaryWeapon1
@@ -45,7 +45,7 @@ exports.createOperator = async (req, res) => {
 				: "/icons/empty.svg",
 			secondaryname2: req.body.secondaryname2 || null,
 
-			bio: req.body.bio || "null",
+			bio: req.body.bio || "",
 		};
 
 		//Create new operator using validated data
