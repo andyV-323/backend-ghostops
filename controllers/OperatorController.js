@@ -17,13 +17,12 @@ exports.createOperator = async (req, res) => {
 			image: req.body.image || "/ghost/Default.png",
 			class: req.body.class,
 			rank: req.body.rank,
-			gear: req.body.gear.startsWith("/icons/")
-				? req.body.gear
-				: "/icons/default.svg",
+			gear: req.body.gear || "DEFAULT" ? req.body.gear : "/icons/default.svg",
 			secondaryClass: req.body.secondaryClass,
-			secondaryGear: req.body.secondaryGear.startsWith("/icons/")
-				? req.body.secondaryGear
-				: "/icons/default.svg",
+			secondaryGear:
+				req.body.secondaryGear || "DEFAULT"
+					? req.body.secondaryGear
+					: "/icons/default.svg",
 
 			primaryWeapon1: req.body.primaryWeapon1.startsWith("/icons/")
 				? req.body.primaryWeapon1
