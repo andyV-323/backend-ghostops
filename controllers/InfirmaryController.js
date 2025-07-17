@@ -76,7 +76,7 @@ exports.addInjuredOperator = async (req, res) => {
 			createdBy: userId,
 			operator: req.body.operator,
 			injuryType: req.body.injuryType,
-			recoveryDays: req.body.recoveryDays,
+			recoveryHours: req.body.recoveryHours,
 		});
 
 		await injuredOperator.save();
