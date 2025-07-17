@@ -26,6 +26,7 @@ exports.createTeam = async (req, res) => {
 			createdBy,
 			name,
 			operators: validOperatorIds,
+			AO,
 		});
 
 		await newTeam.save();
