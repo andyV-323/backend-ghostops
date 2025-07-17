@@ -9,8 +9,8 @@ exports.createTeam = async (req, res) => {
 	try {
 		console.log("Incoming CREATE Team Request:", req.body);
 
-		// Validate required fields
-		const { createdBy, name, operators } = req.body;
+		// Validate required fields - INCLUDE AO in destructuring
+		const { createdBy, name, operators, AO } = req.body;
 		if (!createdBy || !name || !Array.isArray(operators)) {
 			return res
 				.status(400)
@@ -26,7 +26,7 @@ exports.createTeam = async (req, res) => {
 			createdBy,
 			name,
 			operators: validOperatorIds,
-			AO,
+			AO: AO || "", // Include AO in the new team creation
 		});
 
 		await newTeam.save();
@@ -47,6 +47,7 @@ exports.getTeams = async (req, res) => {
 		if (!userId) {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
+		// Fix the populate - AO is not a reference field, it's a simple string
 		const teams = await Team.find({ createdBy: userId }).populate(
 			"operators",
 			"callSign image name"
@@ -79,7 +80,7 @@ exports.getTeamById = async (req, res) => {
 				.json({ message: "Team not found or unauthorized" });
 		}
 
-		res.status(200).json(team);
+		res.status(200).json({ data: team }); // Wrap in data object to match frontend expectation
 	} catch (error) {
 		console.error("Error Fetching Team:", error.message);
 		res.status(500).json({ error: error.message });
@@ -142,6 +143,7 @@ exports.deleteTeam = async (req, res) => {
 		res.status(500).json({ error: error.message });
 	}
 };
+
 // REMOVE an operator from all teams
 exports.removeOperatorFromTeams = async (req, res) => {
 	try {
