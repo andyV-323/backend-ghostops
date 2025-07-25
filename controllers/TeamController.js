@@ -1,5 +1,3 @@
-/** @format */
-
 const Team = require("../models/Team");
 const Operator = require("../models/Operator");
 const mongoose = require("mongoose");

@@ -9,6 +9,7 @@ const squadRoutes = require("./routes/squadRoutes");
 const infirmaryRoutes = require("./routes/infirmaryRoutes");
 const memorialRoutes = require("./routes/memorialRoutes");
 const missionRoutes = require("./routes/missionRoutes");
+const vehicleRoutes = require("./routes/vehicleRoutes");
 
 const app = express();
 
@@ -43,6 +44,7 @@ app.use("/api/squads", authenticate, squadRoutes);
 app.use("/api/infirmary", authenticate, infirmaryRoutes);
 app.use("/api/memorial", authenticate, memorialRoutes);
 app.use("/api/missions", authenticate, missionRoutes);
+app.use("/api/vehicles", authenticate, vehicleRoutes);
 
 //MongoDB Connection
 mongoose
