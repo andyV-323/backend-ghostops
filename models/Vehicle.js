@@ -21,6 +21,10 @@ const vehicleSchema = new mongoose.Schema({
 		type: Number,
 		default: null,
 	},
+	isRepairing: {
+		type: Boolean,
+		default: false,
+	},
 });
 
 module.exports = mongoose.model("Vehicle", vehicleSchema);
