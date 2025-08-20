@@ -10,41 +10,11 @@ exports.createOperator = async (req, res) => {
 		}
 		const operatorData = {
 			createdBy: userId,
-			name: req.body.name,
 			callSign: req.body.callSign,
-			sf: req.body.sf,
-			nationality: req.body.nationality,
 			image: req.body.image || "/ghost/Default.png",
 			class: req.body.class,
-			rank: req.body.rank,
-			gear: req.body.gear || "DEFAULT" ? req.body.gear : "/icons/default.svg",
-			secondaryClass: req.body.secondaryClass,
-			secondaryGear:
-				req.body.secondaryGear || "DEFAULT"
-					? req.body.secondaryGear
-					: "/icons/default.svg",
-
-			primaryWeapon1: req.body.primaryWeapon1.startsWith("/icons/")
-				? req.body.primaryWeapon1
-				: "/icons/empty.svg",
-			primaryname: req.body.primaryname || null,
-			sidearm1: req.body.sidearm1 || null,
-			secondaryWeapon1: req.body.secondaryWeapon1.startsWith("/icons/")
-				? req.body.secondaryWeapon1
-				: "/icons/empty.svg",
-			secondaryname: req.body.secondaryname || null,
-
-			primaryWeapon2: req.body.primaryWeapon2.startsWith("/icons/")
-				? req.body.primaryWeapon2
-				: "/icons/empty.svg",
-			primaryname2: req.body.primaryname2 || null,
-			sidearm2: req.body.sidearm2 || null,
-			secondaryWeapon2: req.body.secondaryWeapon2.startsWith("/icons/")
-				? req.body.secondaryWeapon2
-				: "/icons/empty.svg",
-			secondaryname2: req.body.secondaryname2 || null,
-
-			bio: req.body.bio || "",
+			specialist: req.body.specialist,
+			specialization: req.body.specialization,
 		};
 
 		//Create new operator using validated data
