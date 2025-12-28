@@ -15,6 +15,7 @@ exports.createOperator = async (req, res) => {
 			class: req.body.class,
 			specialist: req.body.specialist,
 			specialization: req.body.specialization,
+			aviator: req.body.aviator,
 		};
 
 		//Create new operator using validated data

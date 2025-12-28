@@ -16,6 +16,7 @@ const operatorSchema = new mongoose.Schema({
 	image: { type: String, default: "/ghost/Default.png" },
 	specialist: { type: Boolean, default: false },
 	specialization: { type: String },
+	aviator: { type: Boolean, default: false },
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);
