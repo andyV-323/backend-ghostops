@@ -1,17 +1,31 @@
 const mongoose = require("mongoose");
 
 const missionSchema = mongoose.Schema({
-  //Cognito user
-  createdBy: { type: String, required: true },
-  name: { type: String, required: true },
-  wasSuccessful: { type: Boolean, required: true },
-  kiaCount: { type: Number, required: true, default: 0 },
-  injuredCount: { type: Number, required: true, default: 0 },
-  assignedTeams: [
-    { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: [] },
-  ],
-  roles: { type: Map, of: String, default: {} },
-  date: { type: Date, default: Date.now },
+	//Cognito user
+	createdBy: { type: String, required: true },
+	name: { type: String, required: true },
+	teams: [
+		{
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Team",
+		},
+	],
+	status: {
+		type: String,
+		required: true,
+		default: "In Progress",
+		enum: ["Planning", "In Progress", "Completed", "Failed", "Aborted"],
+	},
+	location: { type: String },
+	teamRoles: [
+		{
+			teamId: {
+				type: mongoose.Schema.Types.ObjectId,
+				ref: "Team",
+			},
+			role: { type: String },
+		},
+	],
 });
 
 module.exports = mongoose.model("Mission", missionSchema);

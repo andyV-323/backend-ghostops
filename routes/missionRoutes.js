@@ -1,12 +1,22 @@
+// routes/missionRoutes.js
 const express = require("express");
 const router = express.Router();
-const missionController = require("../controllers/MissionController");
+const {
+	getMissions,
+	getMissionById,
+	createMission,
+	updateMission,
+	deleteMission,
+} = require("../controllers/MissionController");
 
-//API Routes for Missions
-router.post("/", missionController.createMission);
-router.get("/", missionController.getMissions);
-router.get("/:id", missionController.getMissionById);
-router.put("/:id", missionController.updateMission);
-router.delete("/:id", missionController.deleteMission);
+// Apply auth middleware to all routes
+
+router.route("/").get(getMissions).post(createMission);
+
+router
+	.route("/:id")
+	.get(getMissionById)
+	.put(updateMission)
+	.delete(deleteMission);
 
 module.exports = router;
