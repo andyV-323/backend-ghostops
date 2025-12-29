@@ -13,8 +13,8 @@ const missionSchema = mongoose.Schema({
 	status: {
 		type: String,
 		required: true,
-		default: "In Progress",
-		enum: ["Planning", "In Progress", "Completed", "Failed", "Aborted"],
+		default: "Recon",
+		enum: ["Recon", "Infil", "Assault", "Extracted", "Failed", "Aborted"],
 	},
 	location: { type: String },
 	teamRoles: [

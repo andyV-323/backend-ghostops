@@ -90,9 +90,8 @@ exports.createMission = async (req, res) => {
 			name: req.body.name,
 			teams: req.body.teams || [],
 			teamRoles: req.body.teamRoles || [],
-			status: req.body.status || "In Progress",
+			status: req.body.status || "Recon",
 			location: req.body.location,
-			notes: req.body.notes,
 		};
 
 		// Create new mission using validated data
