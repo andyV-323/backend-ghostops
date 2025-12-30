@@ -14,8 +14,9 @@ const operatorSchema = new mongoose.Schema({
 		default: "Active",
 	},
 	image: { type: String, default: "/ghost/Default.png" },
-	specialist: { type: Boolean, default: false },
-	specialization: { type: String },
+	recon: { type: Boolean, default: false },
+	technical: { type: Boolean, default: false },
+	role: { type: String },
 	aviator: { type: Boolean, default: false },
 });
 
