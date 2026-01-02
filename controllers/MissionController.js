@@ -15,17 +15,17 @@ exports.getMissions = async (req, res) => {
 		const missions = await Mission.find({ createdBy: userId })
 			.populate({
 				path: "teams",
-				populate: {
-					path: "operators",
-					model: "Operator",
-				},
+				populate: [
+					{ path: "operators", model: "Operator" },
+					{ path: "assets", model: "Vehicle" },
+				],
 			})
 			.populate({
 				path: "teamRoles.teamId",
-				populate: {
-					path: "operators",
-					model: "Operator",
-				},
+				populate: [
+					{ path: "operators", model: "Operator" },
+					{ path: "assets", model: "Vehicle" },
+				],
 			})
 			.sort({ createdAt: -1 });
 
@@ -51,17 +51,23 @@ exports.getMissionById = async (req, res) => {
 		})
 			.populate({
 				path: "teams",
-				populate: {
-					path: "operators",
-					model: "Operator",
-				},
+				populate: [
+					{
+						path: "operators",
+						model: "Operator",
+					},
+					{ path: "assets", model: "Vehicle" },
+				],
 			})
 			.populate({
 				path: "teamRoles.teamId",
-				populate: {
-					path: "operators",
-					model: "Operator",
-				},
+				populate: [
+					{
+						path: "operators",
+						model: "Operator",
+					},
+					{ path: "assets", model: "Vehicle" },
+				],
 			});
 
 		if (!mission) {
@@ -102,17 +108,17 @@ exports.createMission = async (req, res) => {
 		const populatedMission = await Mission.findById(mission._id)
 			.populate({
 				path: "teams",
-				populate: {
-					path: "operators",
-					model: "Operator",
-				},
+				populate: [
+					{ path: "operators", model: "Operator" },
+					{ path: "assets", model: "Vehicle" },
+				],
 			})
 			.populate({
 				path: "teamRoles.teamId",
-				populate: {
-					path: "operators",
-					model: "Operator",
-				},
+				populate: [
+					{ path: "operators", model: "Operator" },
+					{ path: "assets", model: "Vehicle" },
+				],
 			});
 
 		res.status(201).json({
@@ -141,17 +147,17 @@ exports.updateMission = async (req, res) => {
 		)
 			.populate({
 				path: "teams",
-				populate: {
-					path: "operators",
-					model: "Operator",
-				},
+				populate: [
+					{ path: "operators", model: "Operator" },
+					{ path: "assets", model: "Vehicle" },
+				],
 			})
 			.populate({
 				path: "teamRoles.teamId",
-				populate: {
-					path: "operators",
-					model: "Operator",
-				},
+				populate: [
+					{ path: "operators", model: "Operator" },
+					{ path: "assets", model: "Vehicle" },
+				],
 			});
 
 		if (!mission) {

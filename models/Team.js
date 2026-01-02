@@ -11,6 +11,12 @@ const teamSchema = new mongoose.Schema({
 	],
 	name: { type: String, required: true },
 	AO: { type: String },
+	assets: [
+		{
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Vehicle",
+		},
+	],
 });
 
 module.exports = mongoose.model("Team", teamSchema);

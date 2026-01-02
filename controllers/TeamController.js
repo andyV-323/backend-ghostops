@@ -8,7 +8,8 @@ exports.createTeam = async (req, res) => {
 		console.log("Incoming CREATE Team Request:", req.body);
 
 		// Validate required fields - INCLUDE AO in destructuring
-		const { createdBy, name, operators, AO } = req.body;
+		const { createdBy, name, AO, operators, assets } = req.body;
+
 		if (!createdBy || !name || !Array.isArray(operators)) {
 			return res
 				.status(400)
@@ -19,12 +20,16 @@ exports.createTeam = async (req, res) => {
 		const validOperatorIds = operators.filter((opId) =>
 			mongoose.Types.ObjectId.isValid(opId)
 		);
+		const validAssetIds = (Array.isArray(assets) ? assets : []).filter(
+			(assetId) => mongoose.Types.ObjectId.isValid(assetId)
+		);
 
 		const newTeam = new Team({
 			createdBy,
 			name,
 			operators: validOperatorIds,
-			AO: AO || "", // Include AO in the new team creation
+			AO: AO || "",
+			assets: validAssetIds,
 		});
 
 		await newTeam.save();
@@ -46,10 +51,9 @@ exports.getTeams = async (req, res) => {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
 		// Fix the populate - AO is not a reference field, it's a simple string
-		const teams = await Team.find({ createdBy: userId }).populate(
-			"operators",
-			"callSign image name"
-		);
+		const teams = await Team.find({ createdBy: userId })
+			.populate("operators", "callSign image name")
+			.populate("assets");
 
 		res.json(teams);
 	} catch (error) {
@@ -71,7 +75,9 @@ exports.getTeamById = async (req, res) => {
 		const team = await Team.findOne({
 			_id: teamId,
 			createdBy: userId,
-		}).populate("operators");
+		})
+			.populate("operators")
+			.populate("assets");
 		if (!team) {
 			return res
 				.status(404)
