@@ -50,9 +50,8 @@ exports.getTeams = async (req, res) => {
 		if (!userId) {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
-		// Fix the populate - AO is not a reference field, it's a simple string
 		const teams = await Team.find({ createdBy: userId })
-			.populate("operators", "callSign image name")
+			.populate("operators", "callSign image name role")
 			.populate("assets");
 
 		res.json(teams);
