@@ -17,6 +17,7 @@ const operatorSchema = new mongoose.Schema({
 	support: { type: Boolean, default: false },
 	role: { type: String },
 	aviator: { type: Boolean, default: false },
+	imageKey: { type: String, default: null },
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);

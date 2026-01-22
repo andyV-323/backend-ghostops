@@ -10,7 +10,7 @@ const infirmaryRoutes = require("./routes/infirmaryRoutes");
 const memorialRoutes = require("./routes/memorialRoutes");
 const vehicleRoutes = require("./routes/vehicleRoutes");
 const missionRoutes = require("./routes/missionRoutes");
-const uploadsRouter = require("routes/uploads");
+const uploadsRouter = require("./routes/uploads");
 const app = express();
 
 app.use(express.json());

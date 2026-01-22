@@ -16,6 +16,7 @@ exports.createOperator = async (req, res) => {
 			support: req.body.support,
 			role: req.body.role,
 			aviator: req.body.aviator,
+			imageKey: req.body.imageKey,
 		};
 
 		//Create new operator using validated data
@@ -76,7 +77,7 @@ exports.updateOperator = async (req, res) => {
 		const operator = await Operator.findOneAndUpdate(
 			{ _id: req.params.id, createdBy: req.userId },
 			req.body,
-			{ new: true }
+			{ new: true },
 		);
 
 		if (!operator)

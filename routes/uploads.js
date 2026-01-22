@@ -1,12 +1,12 @@
-import express from "express";
-import crypto from "crypto";
-import path from "path";
-import {
+const express = require("express");
+const crypto = require("crypto");
+const path = require("path");
+const {
 	S3Client,
 	PutObjectCommand,
 	GetObjectCommand,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+} = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 const router = express.Router();
 
@@ -16,11 +16,10 @@ const BUCKET = process.env.S3_BUCKET;
 const ALLOWED_TYPES = new Set(["image/png", "image/jpeg"]);
 const EXT = { "image/png": "png", "image/jpeg": "jpg" };
 
-// POST /api/uploads/presign
 router.post("/presign", async (req, res) => {
 	try {
-		const userId = req.userId; // must be set by your auth middleware
-		const { fileName, fileType, operatorId } = req.body ?? {};
+		const userId = req.userId;
+		const { fileName, fileType, operatorId } = req.body || {};
 
 		if (!userId) return res.status(401).json({ error: "Unauthorized" });
 		if (!fileName || !fileType)
@@ -48,14 +47,13 @@ router.post("/presign", async (req, res) => {
 		});
 
 		const uploadUrl = await getSignedUrl(s3, cmd, { expiresIn: 60 });
-		res.json({ uploadUrl, key });
+		return res.json({ uploadUrl, key });
 	} catch (e) {
 		console.error(e);
-		res.status(500).json({ error: "Failed to presign upload" });
+		return res.status(500).json({ error: "Failed to presign upload" });
 	}
 });
 
-// GET /api/uploads/view-url?key=...
 router.get("/view-url", async (req, res) => {
 	try {
 		const userId = req.userId;
@@ -67,12 +65,11 @@ router.get("/view-url", async (req, res) => {
 
 		const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: key });
 		const url = await getSignedUrl(s3, cmd, { expiresIn: 60 });
-
-		res.json({ url });
+		return res.json({ url });
 	} catch (e) {
 		console.error(e);
-		res.status(500).json({ error: "Failed to sign view url" });
+		return res.status(500).json({ error: "Failed to sign view url" });
 	}
 });
 
-export default router;
+module.exports = router;
