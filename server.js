@@ -13,8 +13,8 @@ const missionRoutes = require("./routes/missionRoutes");
 const path = require("path");
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(
 	cors({
 		origin: [
