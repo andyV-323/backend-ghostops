@@ -5,14 +5,13 @@ const Operator = require("../models/Operator");
 const upload = require("../middleware/uploadMiddleware");
 const { uploadImageToS3, deleteImageFromS3 } = require("../utils/S3utils");
 
-// Define Routes
-router.post("/", operatorController.createOperator);
-router.get("/", operatorController.getOperators);
-router.get("/:id", operatorController.getOperatorById);
-router.put("/:id", operatorController.updateOperator);
-router.delete("/:id", operatorController.deleteOperator);
+/**
+ * IMPORTANT:
+ * Put fixed routes BEFORE "/:id" routes
+ * or "/:id" will catch "upload-image" as an id.
+ */
 
-// Image Upload Route - S3 Version
+// ✅ IMAGE ROUTES (fixed paths FIRST)
 router.post("/upload-image", upload.single("image"), async (req, res) => {
 	try {
 		if (!req.file) {
@@ -24,7 +23,6 @@ router.post("/upload-image", upload.single("image"), async (req, res) => {
 		console.log("File size:", req.file.size, "bytes");
 		console.log("MIME type:", req.file.mimetype);
 
-		// Upload to S3 (includes compression)
 		const imageUrl = await uploadImageToS3(
 			req.file.buffer,
 			req.file.originalname,
@@ -35,7 +33,7 @@ router.post("/upload-image", upload.single("image"), async (req, res) => {
 
 		res.status(200).json({
 			message: "Image uploaded successfully",
-			imageUrl: imageUrl,
+			imageUrl,
 		});
 	} catch (error) {
 		console.error("Error uploading image:", error);
@@ -46,7 +44,6 @@ router.post("/upload-image", upload.single("image"), async (req, res) => {
 	}
 });
 
-// Delete Image Route - S3 Version
 router.delete("/delete-image", async (req, res) => {
 	try {
 		const { imageUrl } = req.body;
@@ -55,7 +52,6 @@ router.delete("/delete-image", async (req, res) => {
 			return res.status(400).json({ error: "Invalid image URL" });
 		}
 
-		// Delete from S3
 		await deleteImageFromS3(imageUrl);
 
 		res.status(200).json({ message: "Image deleted successfully" });
@@ -65,7 +61,7 @@ router.delete("/delete-image", async (req, res) => {
 	}
 });
 
-// Update Operator Bio Route
+// ✅ BIO + STATUS ROUTES (also fixed paths FIRST)
 router.put("/:id/bio", async (req, res) => {
 	try {
 		const { id } = req.params;
@@ -92,7 +88,6 @@ router.put("/:id/bio", async (req, res) => {
 	}
 });
 
-// Update Status Route
 router.put("/:id/status", async (req, res) => {
 	try {
 		const { id } = req.params;
@@ -114,5 +109,14 @@ router.put("/:id/status", async (req, res) => {
 		res.status(500).json({ error: "Failed to update status" });
 	}
 });
+
+// ✅ BASE CRUD ROUTES
+router.post("/", operatorController.createOperator);
+router.get("/", operatorController.getOperators);
+
+// ✅ ID ROUTES MUST BE LAST
+router.get("/:id", operatorController.getOperatorById);
+router.put("/:id", operatorController.updateOperator);
+router.delete("/:id", operatorController.deleteOperator);
 
 module.exports = router;
