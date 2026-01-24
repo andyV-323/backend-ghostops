@@ -15,7 +15,18 @@ const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+app.use(
+	cors({
+		origin: [
+			"http://localhost:5173", // Local development
+			"https://www.ghostopsai.com", // Production frontend
+			"https://ghostopsai.com", // Production frontend (without www)
+		],
+		credentials: true,
+		methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+		allowedHeaders: ["Content-Type", "Authorization"],
+	}),
+);
 
 //Serve static files from uploads directory
 // This allows images to be accessed via URL like: http://your-backend.com/uploads/operators/image.jpg
