@@ -3,8 +3,7 @@ const router = express.Router();
 const operatorController = require("../controllers/OperatorController");
 const Operator = require("../models/Operator");
 const upload = require("../middleware/uploadMiddleware");
-const { processImage, deleteImage } = require("../utils/imageUtils");
-const path = require("path");
+const { uploadImageToS3, deleteImageFromS3 } = require("../utils/S3utils");
 
 // Define Routes
 router.post("/", operatorController.createOperator);
@@ -13,48 +12,51 @@ router.get("/:id", operatorController.getOperatorById);
 router.put("/:id", operatorController.updateOperator);
 router.delete("/:id", operatorController.deleteOperator);
 
-// Image Upload Route
+// Image Upload Route - S3 Version
 router.post("/upload-image", upload.single("image"), async (req, res) => {
 	try {
 		if (!req.file) {
 			return res.status(400).json({ error: "No image file provided" });
 		}
 
-		console.log("Original file:", req.file.path);
+		console.log("=== IMAGE UPLOAD START ===");
+		console.log("Original filename:", req.file.originalname);
+		console.log("File size:", req.file.size, "bytes");
+		console.log("MIME type:", req.file.mimetype);
 
-		// Process (compress and resize) the image
-		const processedPath = await processImage(req.file.path);
+		// Upload to S3 (includes compression)
+		const imageUrl = await uploadImageToS3(
+			req.file.buffer,
+			req.file.originalname,
+		);
 
-		console.log("Processed file:", processedPath);
-
-		// Generate the URL path that will be stored in the database
-		const imageUrl = `/uploads/operators/${path.basename(processedPath)}`;
-
-		console.log("Image URL to save in DB:", imageUrl);
+		console.log("S3 URL:", imageUrl);
+		console.log("=== IMAGE UPLOAD END ===");
 
 		res.status(200).json({
 			message: "Image uploaded successfully",
 			imageUrl: imageUrl,
-			imagePath: processedPath,
 		});
 	} catch (error) {
 		console.error("Error uploading image:", error);
-		res.status(500).json({ error: "Failed to upload image" });
+		res.status(500).json({
+			error: "Failed to upload image",
+			details: error.message,
+		});
 	}
 });
 
-// Delete Image Route
+// Delete Image Route - S3 Version
 router.delete("/delete-image", async (req, res) => {
 	try {
-		const { imagePath } = req.body;
+		const { imageUrl } = req.body;
 
-		if (!imagePath || imagePath === "/ghost/Default.png") {
-			return res.status(400).json({ error: "Invalid image path" });
+		if (!imageUrl) {
+			return res.status(400).json({ error: "Invalid image URL" });
 		}
 
-		// Convert URL path to file system path
-		const fullPath = path.join(__dirname, "..", imagePath);
-		await deleteImage(fullPath);
+		// Delete from S3
+		await deleteImageFromS3(imageUrl);
 
 		res.status(200).json({ message: "Image deleted successfully" });
 	} catch (error) {
