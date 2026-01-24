@@ -28,9 +28,6 @@ app.use(
 	}),
 );
 
-//Serve static files from uploads directory
-// This allows images to be accessed via URL like: http://your-backend.com/uploads/operators/image.jpg
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 //Ensures cognito tokens are valid
 const verifier = CognitoJwtVerifier.create({
 	userPoolId: process.env.COGNITO_USER_POOL_ID,
