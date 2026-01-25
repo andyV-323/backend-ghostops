@@ -18,6 +18,10 @@ const operatorSchema = new mongoose.Schema({
 	role: { type: String },
 	aviator: { type: Boolean, default: false },
 	imageKey: { type: String, default: null },
+	weaponType: { type: String, default: null },
+	weapon: { type: String, default: null },
+	sideArm: { type: String, default: null },
+	items: { type: [String], default: [] },
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);

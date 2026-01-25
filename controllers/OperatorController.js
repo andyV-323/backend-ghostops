@@ -17,6 +17,10 @@ exports.createOperator = async (req, res) => {
 			role: req.body.role,
 			aviator: req.body.aviator,
 			imageKey: req.body.imageKey,
+			weaponType: req.body.weaponType,
+			weapon: req.body.weapon,
+			sideArm: req.body.sideArm,
+			items: req.body.items,
 		};
 
 		//Create new operator using validated data
