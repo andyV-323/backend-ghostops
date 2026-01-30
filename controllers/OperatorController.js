@@ -21,6 +21,7 @@ exports.createOperator = async (req, res) => {
 			weapon: req.body.weapon,
 			sideArm: req.body.sideArm,
 			items: req.body.items,
+			perks: req.body.items,
 		};
 
 		//Create new operator using validated data

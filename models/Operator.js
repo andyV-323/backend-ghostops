@@ -22,6 +22,7 @@ const operatorSchema = new mongoose.Schema({
 	weapon: { type: String, default: null },
 	sideArm: { type: String, default: null },
 	items: { type: [String], default: [] },
+	perks: { type: [String], default: [] },
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);
