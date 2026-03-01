@@ -7,10 +7,12 @@ const {
 	createMission,
 	updateMission,
 	deleteMission,
+	addReconReport,
+	deleteReconReport,
+	getIntelAssessment,
 } = require("../controllers/MissionController");
 
-// Apply auth middleware to all routes
-
+// ─── Mission CRUD ─────────────────────────────────────────────
 router.route("/").get(getMissions).post(createMission);
 
 router
@@ -18,5 +20,12 @@ router
 	.get(getMissionById)
 	.put(updateMission)
 	.delete(deleteMission);
+
+// ─── Recon reports ────────────────────────────────────────────
+router.route("/:id/recon").post(addReconReport);
+router.route("/:id/recon/:reportId").delete(deleteReconReport);
+
+// ─── Intel assessment (used by AI briefing) ───────────────────
+router.route("/:id/intel").get(getIntelAssessment);
 
 module.exports = router;
