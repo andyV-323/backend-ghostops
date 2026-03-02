@@ -18,10 +18,10 @@ exports.createTeam = async (req, res) => {
 
 		//valid MongoDB ObjectIds
 		const validOperatorIds = operators.filter((opId) =>
-			mongoose.Types.ObjectId.isValid(opId)
+			mongoose.Types.ObjectId.isValid(opId),
 		);
 		const validAssetIds = (Array.isArray(assets) ? assets : []).filter(
-			(assetId) => mongoose.Types.ObjectId.isValid(assetId)
+			(assetId) => mongoose.Types.ObjectId.isValid(assetId),
 		);
 
 		const newTeam = new Team({
@@ -51,7 +51,7 @@ exports.getTeams = async (req, res) => {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
 		const teams = await Team.find({ createdBy: userId })
-			.populate("operators", "callSign image name role")
+			.populate("operators", "callSign image name role imageKey")
 			.populate("assets");
 
 		res.json(teams);
@@ -103,7 +103,7 @@ exports.updateTeam = async (req, res) => {
 		const team = await Team.findOneAndUpdate(
 			{ _id: teamId, createdBy: userId },
 			req.body,
-			{ new: true, runValidators: true }
+			{ new: true, runValidators: true },
 		).populate("operators");
 
 		if (!team) {
@@ -158,7 +158,7 @@ exports.removeOperatorFromTeams = async (req, res) => {
 		// UPDATE all teams by pulling this operator from their "operators" array
 		const result = await Team.updateMany(
 			{ operators: operatorId },
-			{ $pull: { operators: operatorId } }
+			{ $pull: { operators: operatorId } },
 		);
 
 		res
