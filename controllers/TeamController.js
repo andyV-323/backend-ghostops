@@ -7,8 +7,8 @@ exports.createTeam = async (req, res) => {
 	try {
 		console.log("Incoming CREATE Team Request:", req.body);
 
-		// Validate required fields - INCLUDE AO in destructuring
-		const { createdBy, name, AO, operators, assets } = req.body;
+		// Validate required fields
+		const { createdBy, name, operators, assets } = req.body;
 
 		if (!createdBy || !name || !Array.isArray(operators)) {
 			return res
@@ -28,7 +28,6 @@ exports.createTeam = async (req, res) => {
 			createdBy,
 			name,
 			operators: validOperatorIds,
-			AO: AO || "",
 			assets: validAssetIds,
 		});
 
