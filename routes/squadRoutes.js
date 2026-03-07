@@ -1,12 +1,21 @@
 const express = require("express");
 const router = express.Router();
-const squadController = require("../controllers/SquadController");
+const {
+	getSquads,
+	getSquadById,
+	createSquad,
+	updateSquad,
+	updateOperator,
+	setActiveSquad,
+	deleteSquad,
+} = require("../controllers/SquadController");
 
-//API Routes for Squads
-router.post("/", squadController.createSquad);
-router.get("/", squadController.getSquads);
-router.get("/:id", squadController.getSquadById);
-router.put("/:id", squadController.updateSquad);
-router.delete("/:id", squadController.deleteSquad);
+router.get("/", getSquads);
+router.get("/:id", getSquadById);
+router.post("/", createSquad);
+router.put("/:id", updateSquad);
+router.patch("/active", setActiveSquad); // must be before /:id
+router.patch("/:id/operators", updateOperator);
+router.delete("/:id", deleteSquad);
 
 module.exports = router;

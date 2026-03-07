@@ -1,31 +1,28 @@
 const Operator = require("../models/Operator");
 
-// POST a New Operator
+// ── POST /api/operators ───────────────────────────────────────
 exports.createOperator = async (req, res) => {
 	try {
 		const userId = req.userId;
-
-		if (!userId) {
+		if (!userId)
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-		const operatorData = {
+
+		const operator = new Operator({
 			createdBy: userId,
 			callSign: req.body.callSign,
 			image: req.body.image || "/ghost/Default.png",
 			class: req.body.class,
-			support: req.body.support,
 			role: req.body.role,
+			support: req.body.support,
 			aviator: req.body.aviator,
+			squad: req.body.squad || null, // ← new
 			imageKey: req.body.imageKey,
 			weaponType: req.body.weaponType,
 			weapon: req.body.weapon,
 			sideArm: req.body.sideArm,
 			items: req.body.items,
-			perks: req.body.items,
-		};
-
-		//Create new operator using validated data
-		const operator = new Operator(operatorData);
+			perks: req.body.perks, // ← was copying items by mistake
+		});
 
 		await operator.save();
 		res
@@ -37,18 +34,18 @@ exports.createOperator = async (req, res) => {
 	}
 };
 
-// GET All Operators by Cognito User
+// ── GET /api/operators ────────────────────────────────────────
 exports.getOperators = async (req, res) => {
 	try {
 		const userId = req.userId;
-
-		if (!userId) {
+		if (!userId)
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
 
-		//Only return operators created by the logged-in user
-		const operators = await Operator.find({ createdBy: userId });
-
+		// Populate squad so frontend gets { _id, name } instead of bare ObjectId
+		const operators = await Operator.find({ createdBy: userId }).populate(
+			"squad",
+			"name",
+		);
 		res.status(200).json(operators);
 	} catch (error) {
 		console.error("Error Fetching Operators:", error.message);
@@ -56,7 +53,7 @@ exports.getOperators = async (req, res) => {
 	}
 };
 
-// GET a Single Operator by ID
+// ── GET /api/operators/:id ────────────────────────────────────
 exports.getOperatorById = async (req, res) => {
 	try {
 		if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
@@ -64,7 +61,8 @@ exports.getOperatorById = async (req, res) => {
 		const operator = await Operator.findOne({
 			_id: req.params.id,
 			createdBy: req.userId,
-		});
+		}).populate("squad", "name");
+
 		if (!operator)
 			return res.status(404).json({ message: "Operator not found" });
 
@@ -74,16 +72,20 @@ exports.getOperatorById = async (req, res) => {
 	}
 };
 
-// UPDATE Operator
+// ── PUT /api/operators/:id ────────────────────────────────────
+// req.body passthrough covers squad automatically
 exports.updateOperator = async (req, res) => {
 	try {
 		if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
+
+		// Coerce empty string → null so squad ref is cleared cleanly
+		if (req.body.squad === "") req.body.squad = null;
 
 		const operator = await Operator.findOneAndUpdate(
 			{ _id: req.params.id, createdBy: req.userId },
 			req.body,
 			{ new: true },
-		);
+		).populate("squad", "name");
 
 		if (!operator)
 			return res
@@ -96,26 +98,21 @@ exports.updateOperator = async (req, res) => {
 	}
 };
 
-//DELETE Operator
+// ── DELETE /api/operators/:id ─────────────────────────────────
 exports.deleteOperator = async (req, res) => {
 	try {
 		const userId = req.userId;
-		const operatorId = req.params.id;
-
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized" });
-		}
+		if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
 		const operator = await Operator.findOneAndDelete({
-			_id: operatorId,
+			_id: req.params.id,
 			createdBy: userId,
 		});
 
-		if (!operator) {
+		if (!operator)
 			return res
 				.status(404)
 				.json({ message: "Operator not found or unauthorized" });
-		}
 
 		res.status(200).json({ message: "Operator deleted successfully!" });
 	} catch (error) {

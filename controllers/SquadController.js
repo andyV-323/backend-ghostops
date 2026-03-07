@@ -1,126 +1,165 @@
 const Squad = require("../models/Squad");
 const Operator = require("../models/Operator");
 
-//CREATE a new Squad
-exports.createSquad = async (req, res) => {
-	try {
-		const userId = req.userId;
+// matches your authenticate middleware: req.userId = payload.sub
+const userFilter = (req) => ({ createdBy: req.userId });
 
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-		const squad = new Squad({
-			createdBy: userId,
-			name: req.body.name,
-			operators: req.body.operattors || [],
-		});
-		await squad.save();
-		res.status(201).json({ message: "Squad created successfully!", squad });
-	} catch (error) {
-		console.error("Error Creating Squad:", error.message);
-		res.status(400).json({ error: error.message });
+// ── GET /api/squads ───────────────────────────────────────────
+const getSquads = async (req, res) => {
+	try {
+		const [squads, enablers, aviation] = await Promise.all([
+			Squad.find(userFilter(req)).populate("operators").sort({ createdAt: -1 }),
+			Operator.find({ createdBy: req.userId, support: true }),
+			Operator.find({ createdBy: req.userId, aviator: true }),
+		]);
+		res.json({ squads, enablers, aviation });
+	} catch (err) {
+		console.error("getSquads:", err);
+		res.status(500).json({ message: "Failed to fetch squads." });
 	}
 };
 
-// GET all squads for the logged-in user
-exports.getSquads = async (req, res) => {
+// ── GET /api/squads/:id ───────────────────────────────────────
+const getSquadById = async (req, res) => {
 	try {
-		const userId = req.userId;
-
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-
-		const squads = await Squad.find({ createdBy: userId }).populate(
-			"operators"
-		);
-		res.status(200).json(squads);
-	} catch (error) {
-		console.error("Error Fetching Teams:", error.message);
-		res.status(500).json({ error: error.message });
-	}
-};
-
-// GET a single Squad by ID (only if user created it)
-exports.getSquadById = async (req, res) => {
-	try {
-		const userId = req.userId;
-		const squadId = req.params.id;
-
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-
 		const squad = await Squad.findOne({
-			_id: squadId,
-			createdBy: userId,
+			_id: req.params.id,
+			...userFilter(req),
 		}).populate("operators");
-		if (!squad) {
-			return res
-				.status(404)
-				.json({ message: "Squad not found or unauthorized" });
-		}
 
-		res.status(200).json(team);
-	} catch (error) {
-		console.error(" Error Fetching Squad:", error.message);
-		res.status(500).json({ error: error.message });
+		if (!squad) return res.status(404).json({ message: "Squad not found." });
+		res.json(squad);
+	} catch (err) {
+		console.error("getSquadById:", err);
+		res.status(500).json({ message: "Failed to fetch squad." });
 	}
 };
 
-// UDATE a Squad
-exports.updateSquad = async (req, res) => {
+// ── POST /api/squads ──────────────────────────────────────────
+const createSquad = async (req, res) => {
 	try {
-		const userId = req.userId;
-		const squadId = req.params.id;
+		const { name, operators } = req.body;
 
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
+		if (!name?.trim())
+			return res.status(400).json({ message: "Squad name is required." });
+
+		const squad = await Squad.create({
+			createdBy: req.userId,
+			name: name.trim(),
+			operators: operators || [],
+		});
+
+		const populated = await squad.populate("operators");
+		res.status(201).json(populated);
+	} catch (err) {
+		console.error("createSquad:", err);
+		res.status(500).json({ message: "Failed to create squad." });
+	}
+};
+
+// ── PUT /api/squads/:id ───────────────────────────────────────
+const updateSquad = async (req, res) => {
+	try {
+		const { name, operators, isActive } = req.body;
 
 		const squad = await Squad.findOneAndUpdate(
-			{ _id: squadId, createdBy: userId },
-			req.body,
-			{ new: true, runValidators: true }
+			{ _id: req.params.id, ...userFilter(req) },
+			{
+				...(name !== undefined && { name: name.trim() }),
+				...(operators !== undefined && { operators }),
+				...(isActive !== undefined && { isActive }),
+			},
+			{ new: true, runValidators: true },
 		).populate("operators");
 
-		if (!squad) {
-			return res
-				.status(404)
-				.json({ message: "Squad not found or unauthorized" });
-		}
-
-		res.status(200).json({ message: "Squad updated successfully!", squad });
-	} catch (error) {
-		console.error("Error Updating Squad:", error.message);
-		res.status(400).json({ error: error.message });
+		if (!squad) return res.status(404).json({ message: "Squad not found." });
+		res.json(squad);
+	} catch (err) {
+		console.error("updateSquad:", err);
+		res.status(500).json({ message: "Failed to update squad." });
 	}
 };
 
-// DELETE a Squad
-exports.deleteSquad = async (req, res) => {
+// ── PATCH /api/squads/:id/operators ──────────────────────────
+const updateOperator = async (req, res) => {
 	try {
-		const userId = req.userId;
-		const squadId = req.params.id;
+		const { action, operatorId } = req.body;
 
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-
-		const squad = await Squad.findOneAndDelete({
-			_id: squadId,
-			createdBy: userId,
-		});
-
-		if (!squad) {
+		if (!["add", "remove"].includes(action))
 			return res
-				.status(404)
-				.json({ message: "Squad not found or unauthorized" });
+				.status(400)
+				.json({ message: "action must be 'add' or 'remove'." });
+
+		const squad = await Squad.findOne({
+			_id: req.params.id,
+			...userFilter(req),
+		});
+		if (!squad) return res.status(404).json({ message: "Squad not found." });
+
+		if (action === "add") {
+			if (!squad.operators.map(String).includes(operatorId))
+				squad.operators.push(operatorId);
+		} else {
+			squad.operators = squad.operators.filter(
+				(id) => id.toString() !== operatorId,
+			);
 		}
 
-		res.status(200).json({ message: "Squad deleted successfully!" });
-	} catch (error) {
-		console.error("Error Deleting Squad:", error.message);
-		res.status(500).json({ error: error.message });
+		await squad.save();
+		const populated = await squad.populate("operators");
+		res.json(populated);
+	} catch (err) {
+		console.error("updateOperator:", err);
+		res.status(500).json({ message: "Failed to update squad operator." });
 	}
+};
+
+// ── PATCH /api/squads/active ──────────────────────────────────
+const setActiveSquad = async (req, res) => {
+	try {
+		const { squadId } = req.body;
+
+		await Squad.updateMany(userFilter(req), { isActive: false });
+
+		if (squadId) {
+			await Squad.findOneAndUpdate(
+				{ _id: squadId, ...userFilter(req) },
+				{ isActive: true },
+			);
+		}
+
+		const squads = await Squad.find(userFilter(req))
+			.populate("operators")
+			.sort({ createdAt: -1 });
+
+		res.json(squads);
+	} catch (err) {
+		console.error("setActiveSquad:", err);
+		res.status(500).json({ message: "Failed to set active squad." });
+	}
+};
+
+// ── DELETE /api/squads/:id ────────────────────────────────────
+const deleteSquad = async (req, res) => {
+	try {
+		const squad = await Squad.findOneAndDelete({
+			_id: req.params.id,
+			...userFilter(req),
+		});
+		if (!squad) return res.status(404).json({ message: "Squad not found." });
+		res.json({ message: "Squad deleted.", id: req.params.id });
+	} catch (err) {
+		console.error("deleteSquad:", err);
+		res.status(500).json({ message: "Failed to delete squad." });
+	}
+};
+
+module.exports = {
+	getSquads,
+	getSquadById,
+	createSquad,
+	updateSquad,
+	updateOperator,
+	setActiveSquad,
+	deleteSquad,
 };
