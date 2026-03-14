@@ -7,12 +7,12 @@ const {
 	createMission,
 	updateMission,
 	deleteMission,
-	addReconReport,
-	deleteReconReport,
-	getIntelAssessment,
+	addPhase,
+	deletePhase,
 } = require("../controllers/MissionController");
 
-// ─── Mission CRUD ─────────────────────────────────────────────
+// ─── Mission CRUD ─────────────────────────────────────────────────────────────
+
 router.route("/").get(getMissions).post(createMission);
 
 router
@@ -21,11 +21,11 @@ router
 	.put(updateMission)
 	.delete(deleteMission);
 
-// ─── Recon reports ────────────────────────────────────────────
-router.route("/:id/recon").post(addReconReport);
-router.route("/:id/recon/:reportId").delete(deleteReconReport);
+// ─── Phase reports ────────────────────────────────────────────────────────────
+// POST   /api/missions/:id/phases           — file a new phase report
+// DELETE /api/missions/:id/phases/:phaseId  — remove a phase
 
-// ─── Intel assessment (used by AI briefing) ───────────────────
-router.route("/:id/intel").get(getIntelAssessment);
+router.route("/:id/phases").post(addPhase);
+router.route("/:id/phases/:phaseId").delete(deletePhase);
 
 module.exports = router;
