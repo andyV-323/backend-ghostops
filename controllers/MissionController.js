@@ -2,8 +2,6 @@
 const Mission = require("../models/Mission");
 
 // ─── GET /api/missions ────────────────────────────────────────────────────────
-// @desc  Get all missions for the authenticated user (lightweight list)
-// @access Private
 
 exports.getMissions = async (req, res) => {
 	try {
@@ -12,10 +10,10 @@ exports.getMissions = async (req, res) => {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
 
-		// Exclude full briefingText, phase notes, and AAR from list response —
-		// frontend only needs these for the detail view.
 		const missions = await Mission.find({ createdBy: userId })
-			.select("-briefingText -phases.notes -phases.generatorSnapshot -aar")
+			.select(
+				"-briefingText -phases.notes -phases.generatorSnapshot -aar -campaignPhases.briefingText",
+			)
 			.sort({ createdAt: -1 });
 
 		res.status(200).json(missions);
@@ -26,8 +24,6 @@ exports.getMissions = async (req, res) => {
 };
 
 // ─── GET /api/missions/:id ────────────────────────────────────────────────────
-// @desc  Get a single mission with full data including all phases and AAR
-// @access Private
 
 exports.getMissionById = async (req, res) => {
 	try {
@@ -52,8 +48,6 @@ exports.getMissionById = async (req, res) => {
 };
 
 // ─── POST /api/missions ───────────────────────────────────────────────────────
-// @desc  Create a new mission — only name required at creation time
-// @access Private
 
 exports.createMission = async (req, res) => {
 	try {
@@ -86,9 +80,7 @@ exports.createMission = async (req, res) => {
 };
 
 // ─── PUT /api/missions/:id ────────────────────────────────────────────────────
-// @desc  Update mission fields — generator, briefingText, status, province,
-//        biome, missionType, notes, aar
-// @access Private
+// Accepts all standard fields plus AI campaign fields.
 
 exports.updateMission = async (req, res) => {
 	try {
@@ -105,9 +97,16 @@ exports.updateMission = async (req, res) => {
 			briefingText,
 			aar,
 			notes,
+			// ── AI campaign fields ──────────────────────────────────────────
+			aiGenerated,
+			opType,
+			operationNarrative,
+			campaignPhases,
 		} = req.body;
 
 		const patch = {};
+
+		// Standard fields
 		if (name !== undefined) patch.name = name.trim();
 		if (status !== undefined) patch.status = status;
 		if (province !== undefined) patch.province = province;
@@ -116,6 +115,13 @@ exports.updateMission = async (req, res) => {
 		if (briefingText !== undefined) patch.briefingText = briefingText;
 		if (aar !== undefined) patch.aar = aar;
 		if (notes !== undefined) patch.notes = notes;
+
+		// AI campaign fields — only written when AI mode generates the mission
+		if (aiGenerated !== undefined) patch.aiGenerated = aiGenerated;
+		if (opType !== undefined) patch.opType = opType;
+		if (operationNarrative !== undefined)
+			patch.operationNarrative = operationNarrative;
+		if (campaignPhases !== undefined) patch.campaignPhases = campaignPhases;
 
 		const mission = await Mission.findOneAndUpdate(
 			{ _id: req.params.id, createdBy: req.userId },
@@ -137,8 +143,6 @@ exports.updateMission = async (req, res) => {
 };
 
 // ─── DELETE /api/missions/:id ─────────────────────────────────────────────────
-// @desc  Delete a mission and all its phases
-// @access Private
 
 exports.deleteMission = async (req, res) => {
 	try {
@@ -168,8 +172,8 @@ exports.deleteMission = async (req, res) => {
 };
 
 // ─── POST /api/missions/:id/phases ────────────────────────────────────────────
-// @desc  Append a completed phase report to a mission
-// @access Private
+// Appends a completed phase report.
+// If mission is AI-generated, advances the campaign phase unlock chain.
 
 exports.addPhase = async (req, res) => {
 	try {
@@ -192,7 +196,6 @@ exports.addPhase = async (req, res) => {
 			createdAt,
 		} = req.body;
 
-		// outcome and casualties are required
 		if (!outcome) {
 			return res.status(400).json({ message: "Phase outcome is required" });
 		}
@@ -200,28 +203,11 @@ exports.addPhase = async (req, res) => {
 			return res.status(400).json({ message: "Casualty status is required" });
 		}
 
-		const mission = await Mission.findOneAndUpdate(
-			{ _id: req.params.id, createdBy: req.userId },
-			{
-				$push: {
-					phases: {
-						phaseNumber: phaseNumber ?? 1,
-						province: province ?? "",
-						missionType: missionType ?? "",
-						objectives: objectives ?? [],
-						outcome,
-						complications: complications ?? [],
-						casualties,
-						casualtyNote: casualtyNote ?? "",
-						intelDeveloped: intelDeveloped ?? [],
-						notes: notes ?? "",
-						generatorSnapshot: generatorSnapshot ?? {},
-						createdAt: createdAt ? new Date(createdAt) : new Date(),
-					},
-				},
-			},
-			{ new: true, runValidators: true },
-		);
+		// Load the full mission so we can inspect campaignPhases
+		const mission = await Mission.findOne({
+			_id: req.params.id,
+			createdBy: req.userId,
+		});
 
 		if (!mission) {
 			return res
@@ -229,12 +215,67 @@ exports.addPhase = async (req, res) => {
 				.json({ message: "Mission not found or unauthorized" });
 		}
 
-		// Return the newly appended phase
+		// ── Append the phase report ───────────────────────────────────────────
+		mission.phases.push({
+			phaseNumber: phaseNumber ?? mission.phases.length + 1,
+			province: province ?? "",
+			missionType: missionType ?? "",
+			objectives: objectives ?? [],
+			outcome,
+			complications: complications ?? [],
+			casualties,
+			casualtyNote: casualtyNote ?? "",
+			intelDeveloped: intelDeveloped ?? [],
+			notes: notes ?? "",
+			generatorSnapshot: generatorSnapshot ?? {},
+			createdAt: createdAt ? new Date(createdAt) : new Date(),
+		});
+
+		// ── Campaign phase unlock (AI missions only) ──────────────────────────
+		// When a phase report is filed:
+		//   1. Find the currently active campaign phase
+		//   2. Mark it complete
+		//   3. Unlock the next phase (set to active)
+		//   4. If the completed phase was final, mark the mission complete
+
+		if (mission.aiGenerated && mission.campaignPhases?.length) {
+			const activeIndex = mission.campaignPhases.findIndex(
+				(p) => p.status === "active",
+			);
+
+			if (activeIndex !== -1) {
+				// Mark current phase complete
+				mission.campaignPhases[activeIndex].status = "complete";
+
+				const completedPhase = mission.campaignPhases[activeIndex];
+
+				// Unlock next phase if not the final
+				const nextIndex = activeIndex + 1;
+				if (nextIndex < mission.campaignPhases.length) {
+					mission.campaignPhases[nextIndex].status = "active";
+				}
+
+				// If final phase just completed, mark operation complete
+				if (completedPhase.isFinal) {
+					mission.status = "complete";
+				}
+
+				// Mark campaignPhases as modified so Mongoose saves the nested changes
+				mission.markModified("campaignPhases");
+			}
+		}
+
+		await mission.save();
+
 		const newPhase = mission.phases[mission.phases.length - 1];
 
+		// Return phase + updated campaign phases so frontend can update
+		// the phase unlock UI without a separate fetch
 		res.status(201).json({
 			message: `Phase ${newPhase.phaseNumber} filed`,
 			phase: newPhase,
+			campaignPhases: mission.aiGenerated ? mission.campaignPhases : undefined,
+			missionStatus: mission.status,
 		});
 	} catch (error) {
 		console.error("Error saving phase:", error.message);
@@ -243,8 +284,6 @@ exports.addPhase = async (req, res) => {
 };
 
 // ─── DELETE /api/missions/:id/phases/:phaseId ─────────────────────────────────
-// @desc  Remove a specific phase from a mission
-// @access Private
 
 exports.deletePhase = async (req, res) => {
 	try {

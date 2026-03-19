@@ -2,30 +2,21 @@ const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
 // ─── Generator Output ─────────────────────────────────────────────────────────
-// Whatever MissionGenerator produced — same shape for all generation modes.
-// Now includes all point data from GeneratePoints.js.
 
 const GeneratorSchema = new Schema(
 	{
 		generationMode: {
 			type: String,
-			enum: ["random", "ops"],
+			enum: ["random", "ops", "ai"], // ← added "ai"
 			default: "random",
 		},
 		selectedLocations: { type: [Schema.Types.Mixed], default: [] },
 		mapBounds: { type: Schema.Types.Mixed },
 		imgURL: { type: String, default: "" },
-
-		// Mission type — stored here so generator and briefing share it
 		missionType: { type: String, default: "" },
-
-		// Insertion/extraction points — [row, col] pixel arrays
-		// Set by GeneratePoints.js (algorithmic — no AI)
 		infilPoint: { type: Schema.Types.Mixed, default: null },
 		exfilPoint: { type: Schema.Types.Mixed, default: null },
 		rallyPoint: { type: Schema.Types.Mixed, default: null },
-
-		// Approach metadata from GeneratePoints.js
 		infilMethod: { type: String, default: "" },
 		exfilMethod: { type: String, default: "" },
 		approachVector: { type: String, default: "" },
@@ -34,9 +25,6 @@ const GeneratorSchema = new Schema(
 );
 
 // ─── Generator Snapshot ───────────────────────────────────────────────────────
-// Point-in-time copy of insertion points at the time a phase was played.
-// Stored on each Phase so the AAR has accurate coordinates even if the
-// player regenerates points for a new mission later.
 
 const GeneratorSnapshotSchema = new Schema(
 	{
@@ -49,22 +37,64 @@ const GeneratorSnapshotSchema = new Schema(
 	{ _id: false },
 );
 
+// ─── Campaign Phase ───────────────────────────────────────────────────────────
+// AI-planned phase stubs — generated upfront by generateCampaign().
+// One entry per phase in the operation. Player files phase reports
+// against these, advancing status as the campaign progresses.
+
+const CampaignPhaseSchema = new Schema(
+	{
+		phaseIndex: { type: Number, required: true },
+
+		// AI-generated narrative fields
+		label: { type: String, default: "" }, // e.g. "Cold Canvas"
+		objective: { type: String, default: "" }, // one-sentence player task
+		minibrief: { type: String, default: "" }, // AI flavor narrative
+		intelGate: { type: String, default: null }, // what this phase produces
+		isFinal: { type: Boolean, default: false },
+
+		// Phase geography — each phase can be a different province
+		province: { type: String, default: "" },
+		biome: { type: String, default: "" },
+		missionTypeId: { type: String, default: "" },
+		location: { type: Schema.Types.Mixed, default: null }, // full location object
+
+		// Algorithmic points from GeneratePointsOnMap()
+		infilPoint: { type: Schema.Types.Mixed, default: null },
+		exfilPoint: { type: Schema.Types.Mixed, default: null },
+		rallyPoint: { type: Schema.Types.Mixed, default: null },
+		infilMethod: { type: String, default: "" },
+		exfilMethod: { type: String, default: "" },
+		approachVector: { type: String, default: "" },
+
+		// Map data for this phase's province
+		bounds: { type: Schema.Types.Mixed, default: null },
+		imgURL: { type: String, default: "" },
+
+		// Full briefing text for this phase (generateBriefing() output)
+		briefingText: { type: String, default: "" },
+
+		// Unlock status
+		// active   — current phase, player sees full briefing
+		// pending  — locked, player sees label + objective only
+		// complete — player has filed a phase report for this phase
+		status: {
+			type: String,
+			enum: ["active", "pending", "complete"],
+			default: "pending",
+		},
+	},
+	{ _id: false },
+);
+
 // ─── Phase ────────────────────────────────────────────────────────────────────
-// One completed post-mission phase report filed via PhaseReportSheet.
-// Multiple phases per operation, ordered by phaseNumber.
 
 const PhaseSchema = new Schema(
 	{
 		phaseNumber: { type: Number, required: true },
-
-		// Context snapshot — province and mission type at time of play
 		province: { type: String, default: "" },
 		missionType: { type: String, default: "" },
-
-		// Objectives active during this phase (location names)
 		objectives: { type: [String], default: [] },
-
-		// Screen 1 — Outcome (single select)
 		outcome: {
 			type: String,
 			enum: [
@@ -76,8 +106,6 @@ const PhaseSchema = new Schema(
 			],
 			required: true,
 		},
-
-		// Screen 2 — Complications (multi-select)
 		complications: {
 			type: [String],
 			enum: [
@@ -93,16 +121,12 @@ const PhaseSchema = new Schema(
 			],
 			default: [],
 		},
-
-		// Screen 3 — Casualties
 		casualties: {
 			type: String,
 			enum: ["none", "injured", "kia"],
 			required: true,
 		},
 		casualtyNote: { type: String, default: "", maxlength: 150 },
-
-		// Screen 4 — Intel developed (multi-select)
 		intelDeveloped: {
 			type: [String],
 			enum: [
@@ -116,13 +140,8 @@ const PhaseSchema = new Schema(
 			],
 			default: [],
 		},
-
-		// Screen 4 — Optional field notes
 		notes: { type: String, default: "", maxlength: 150 },
-
-		// Snapshot of insertion points at time of play
 		generatorSnapshot: { type: GeneratorSnapshotSchema, default: () => ({}) },
-
 		createdAt: { type: Date, default: Date.now },
 	},
 	{ timestamps: false },
@@ -132,40 +151,31 @@ const PhaseSchema = new Schema(
 
 const MissionSchema = new Schema(
 	{
-		// Auth — Cognito sub or username
 		createdBy: { type: String, required: true, index: true },
-
-		// Identity
 		name: { type: String, required: true, trim: true, maxlength: 80 },
 		status: {
 			type: String,
 			enum: ["planning", "active", "complete"],
 			default: "planning",
 		},
-
-		// Province / biome — top-level so mission list can display without
-		// unpacking the generator sub-document
 		province: { type: String, default: "" },
 		biome: { type: String, default: "" },
-
-		// Mission Generator output — set by MissionGenerator.jsx via saveMissionGenerator()
 		generator: { type: GeneratorSchema, default: () => ({}) },
-
-		// Briefing text — generated by BriefingGenerator.js (pure function, no AI)
 		briefingText: { type: String, default: "" },
-
-		// Phase reports — appended one at a time via POST /missions/:id/phases
 		phases: { type: [PhaseSchema], default: [] },
-
-		// After Action Report — generated by generateAAR() (single Groq call)
-		// null until first AAR is generated and saved
 		aar: { type: String, default: null },
-
-		// Player scratchpad
 		notes: { type: String, default: "", maxlength: 2000 },
+
+		// ── AI campaign fields ─────────────────────────────────────────────────
+		// Only populated when mission is generated via AI Ops mode.
+		// Standard random/ops missions leave these at defaults.
+		aiGenerated: { type: Boolean, default: false },
+		opType: { type: String, default: "" }, // rescue, hvt_hunt, etc.
+		operationNarrative: { type: String, default: "" }, // AI-written backstory
+		campaignPhases: { type: [CampaignPhaseSchema], default: [] },
 	},
 	{
-		timestamps: true, // adds createdAt + updatedAt
+		timestamps: true,
 	},
 );
 
