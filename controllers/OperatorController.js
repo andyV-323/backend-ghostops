@@ -1,4 +1,5 @@
 const Operator = require("../models/Operator");
+const { deleteImageFromS3 } = require("../utils/S3utils");
 
 // ── POST /api/operators ───────────────────────────────────────
 exports.createOperator = async (req, res) => {
@@ -113,6 +114,10 @@ exports.deleteOperator = async (req, res) => {
 			return res
 				.status(404)
 				.json({ message: "Operator not found or unauthorized" });
+
+		if (operator.imageKey) {
+			await deleteImageFromS3(operator.imageKey);
+		}
 
 		res.status(200).json({ message: "Operator deleted successfully!" });
 	} catch (error) {
