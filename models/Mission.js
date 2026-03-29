@@ -74,6 +74,18 @@ const CampaignPhaseSchema = new Schema(
 		// Full briefing text for this phase (generateBriefing() output)
 		briefingText: { type: String, default: "" },
 
+		// AI-generated tactical context
+		timeOfDay: {
+			type: String,
+			enum: ["night", "dawn", "day", "dusk", null],
+			default: null,
+		},
+		threatLevel: {
+			type: String,
+			enum: ["low", "medium", "high", "critical", null],
+			default: null,
+		},
+
 		// Unlock status
 		// active   — current phase, player sees full briefing
 		// pending  — locked, player sees label + objective only
@@ -135,8 +147,26 @@ const PhaseSchema = new Schema(
 				"enemy_strength",
 				"facility_layout",
 				"hvt_location",
+				"hvt_confirmed",
 				"supply_route",
 				"contact_activated",
+				"comms_net",
+				"weapons_cache",
+				"command_element",
+				"civilian_network",
+				"air_defense",
+				"vehicle_count",
+				"sigint",
+				"tunnels_cache",
+				"network_structure",
+				"safe_house",
+				"facilitator",
+				"foreign_link",
+				"propaganda",
+				"comms_devices",
+				"position_mapped",
+				"route_intel",
+				"cache_sighted",
 			],
 			default: [],
 		},

@@ -10,7 +10,7 @@ const infirmaryRoutes = require("./routes/infirmaryRoutes");
 const memorialRoutes = require("./routes/memorialRoutes");
 const vehicleRoutes = require("./routes/vehicleRoutes");
 const missionRoutes = require("./routes/missionRoutes");
-const path = require("path");
+const aiRoutes      = require("./routes/aiRoutes");
 const app = express();
 
 app.use(express.json({ limit: "50mb" }));
@@ -56,7 +56,7 @@ app.use("/api/infirmary", authenticate, infirmaryRoutes);
 app.use("/api/memorial", authenticate, memorialRoutes);
 app.use("/api/missions", authenticate, missionRoutes);
 app.use("/api/vehicles", authenticate, vehicleRoutes);
-app.use("/api/missions", authenticate, missionRoutes);
+app.use("/api/ai",       authenticate, aiRoutes);
 
 //MongoDB Connection
 mongoose
