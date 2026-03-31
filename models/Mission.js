@@ -110,11 +110,23 @@ const PhaseSchema = new Schema(
 		outcome: {
 			type: String,
 			enum: [
-				"clean",
-				"compromised",
-				"heavy_contact",
-				"aborted",
+				// generic
+				"clean", "compromised", "heavy", "heavy_contact", "partial", "aborted",
 				"target_not_present",
+				// ambush / convoy
+				"no_show", "overrun", "contact", "route_denied",
+				// HVT / snatch
+				"hot_exfil", "hvt_escaped", "hvt_kia", "unconfirmed", "target_fled",
+				// sabotage / demo
+				"charges_lost", "collateral",
+				// SR / recon
+				"nothing", "extended", "cut_short",
+				// BDA
+				"confirmed", "intact", "denied", "secondary",
+				// CT hostage / recovery
+				"hostage_kia", "under_fire", "critical", "personnel_kia",
+				// overwatch / support
+				"engaged", "displaced", "fires_called",
 			],
 			required: true,
 		},
@@ -135,7 +147,7 @@ const PhaseSchema = new Schema(
 		},
 		casualties: {
 			type: String,
-			enum: ["none", "injured", "kia"],
+			enum: ["none", "injured", "kia", "multiple_wia", "missing"],
 			required: true,
 		},
 		casualtyNote: { type: String, default: "", maxlength: 150 },
