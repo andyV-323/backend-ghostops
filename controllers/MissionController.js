@@ -122,6 +122,11 @@ exports.updateMission = async (req, res) => {
 		if (operationNarrative !== undefined)
 			patch.operationNarrative = operationNarrative;
 		if (campaignPhases !== undefined) patch.campaignPhases = campaignPhases;
+		if (req.body.operationStructure !== undefined)
+			patch.operationStructure = req.body.operationStructure;
+		if (req.body.friendlyConcerns !== undefined)
+			patch.friendlyConcerns = req.body.friendlyConcerns;
+		if (req.body.exfilPlan !== undefined) patch.exfilPlan = req.body.exfilPlan;
 
 		const mission = await Mission.findOneAndUpdate(
 			{ _id: req.params.id, createdBy: req.userId },
@@ -194,6 +199,8 @@ exports.addPhase = async (req, res) => {
 			notes,
 			generatorSnapshot,
 			createdAt,
+			squadUsed,
+			infilMethodUsed,
 		} = req.body;
 
 		if (!outcome) {
@@ -216,8 +223,9 @@ exports.addPhase = async (req, res) => {
 		}
 
 		// ── Append the phase report ───────────────────────────────────────────
+		const resolvedPhaseNumber = phaseNumber ?? mission.phases.length + 1;
 		mission.phases.push({
-			phaseNumber: phaseNumber ?? mission.phases.length + 1,
+			phaseNumber: resolvedPhaseNumber,
 			province: province ?? "",
 			missionType: missionType ?? "",
 			objectives: objectives ?? [],
@@ -227,42 +235,68 @@ exports.addPhase = async (req, res) => {
 			casualtyNote: casualtyNote ?? "",
 			intelDeveloped: intelDeveloped ?? [],
 			notes: notes ?? "",
+			squadUsed: squadUsed ?? "",
+			infilMethodUsed: infilMethodUsed ?? "",
 			generatorSnapshot: generatorSnapshot ?? {},
 			createdAt: createdAt ? new Date(createdAt) : new Date(),
 		});
 
 		// ── Campaign phase unlock (AI missions only) ──────────────────────────
-		// When a phase report is filed:
-		//   1. Find the currently active campaign phase
-		//   2. Mark it complete
-		//   3. Unlock the next phase (set to active)
-		//   4. If the completed phase was final, mark the mission complete
-
 		if (mission.aiGenerated && mission.campaignPhases?.length) {
-			const activeIndex = mission.campaignPhases.findIndex(
-				(p) => p.status === "active",
-			);
+			const structure = mission.operationStructure ?? "direct_action";
 
-			if (activeIndex !== -1) {
-				// Mark current phase complete
-				mission.campaignPhases[activeIndex].status = "complete";
+			if (structure === "direct_action") {
+				// All phases start active — find by phaseIndex and mark complete
+				const matchIdx = mission.campaignPhases.findIndex(
+					(p) => p.phaseIndex === resolvedPhaseNumber - 1,
+				);
+				const targetIdx = matchIdx !== -1
+					? matchIdx
+					: mission.campaignPhases.findIndex((p) => p.status === "active");
 
-				const completedPhase = mission.campaignPhases[activeIndex];
-
-				// Unlock next phase if not the final
-				const nextIndex = activeIndex + 1;
-				if (nextIndex < mission.campaignPhases.length) {
-					mission.campaignPhases[nextIndex].status = "active";
+				if (targetIdx !== -1) {
+					mission.campaignPhases[targetIdx].status = "complete";
+					if (mission.campaignPhases[targetIdx].isFinal) {
+						mission.status = "complete";
+					}
 				}
+			} else {
+				// intel_then_strike: actIndex 0 phases run first; completing all of
+				// them unlocks actIndex 1 (the strike) phases.
+				const matchIdx = mission.campaignPhases.findIndex(
+					(p) =>
+						p.status === "active" &&
+						(p.phaseIndex === resolvedPhaseNumber - 1 || p.actIndex === 0),
+				);
+				const targetIdx = matchIdx !== -1
+					? matchIdx
+					: mission.campaignPhases.findIndex((p) => p.status === "active");
 
-				// If final phase just completed, mark operation complete
-				if (completedPhase.isFinal) {
-					mission.status = "complete";
+				if (targetIdx !== -1) {
+					mission.campaignPhases[targetIdx].status = "complete";
+					const completed = mission.campaignPhases[targetIdx];
+
+					if (completed.isFinal) {
+						mission.status = "complete";
+					}
+
+					// If the completed phase was an intel phase (act 0), check
+					// whether all act 0 phases are now done — if so, unlock act 1.
+					if (completed.actIndex === 0) {
+						const allAct0Done = mission.campaignPhases
+							.filter((p) => p.actIndex === 0)
+							.every((p) => p.status === "complete");
+
+						if (allAct0Done) {
+							mission.campaignPhases.forEach((p) => {
+								if (p.actIndex === 1) p.status = "active";
+							});
+						}
+					}
 				}
-
-				// Mark campaignPhases as modified so Mongoose saves the nested changes
-				mission.markModified("campaignPhases");
 			}
+
+			mission.markModified("campaignPhases");
 		}
 
 		await mission.save();

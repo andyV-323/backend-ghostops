@@ -86,6 +86,14 @@ const CampaignPhaseSchema = new Schema(
 			default: null,
 		},
 
+		// Two-structure operation fields
+		actIndex: { type: Number, default: 0 },          // which act this phase belongs to
+		teamLabel: { type: String, default: "" },         // e.g. "Alpha", "Bravo"
+		teamSize: { type: String, default: "" },          // e.g. "2-man", "full squad"
+		task: { type: String, default: "" },              // specific team task for this phase
+		specialistRequired: { type: String, default: null }, // e.g. "medic", "demo"
+		unlockedBy: { type: String, default: null },      // phaseIndex of the gate phase
+
 		// Unlock status
 		// active   — current phase, player sees full briefing
 		// pending  — locked, player sees label + objective only
@@ -183,6 +191,8 @@ const PhaseSchema = new Schema(
 			default: [],
 		},
 		notes: { type: String, default: "", maxlength: 150 },
+		squadUsed: { type: String, default: "" },
+		infilMethodUsed: { type: String, default: "" },
 		generatorSnapshot: { type: GeneratorSnapshotSchema, default: () => ({}) },
 		createdAt: { type: Date, default: Date.now },
 	},
@@ -215,6 +225,13 @@ const MissionSchema = new Schema(
 		opType: { type: String, default: "" }, // rescue, hvt_hunt, etc.
 		operationNarrative: { type: String, default: "" }, // AI-written backstory
 		campaignPhases: { type: [CampaignPhaseSchema], default: [] },
+		operationStructure: {
+			type: String,
+			enum: ["direct_action", "intel_then_strike"],
+			default: "direct_action",
+		},
+		friendlyConcerns: { type: String, default: "" },
+		exfilPlan: { type: String, default: "" },
 	},
 	{
 		timestamps: true,

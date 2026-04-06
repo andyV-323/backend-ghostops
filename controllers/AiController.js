@@ -60,26 +60,60 @@ exports.generateCampaign = async (req, res) => {
 			});
 		}
 
-		if (!campaign.phases?.length) {
-			return res.status(422).json({
-				message: "Campaign generation returned no phases. Try again.",
-			});
+		// ── Validate location names (structure-aware) ─────────────────────────
+		const validLoc = (loc) =>
+			provinceLocationNames.some((name) => name.trim() === loc?.trim());
+
+		const structure = campaign.structure;
+
+		if (structure === "direct_action") {
+			// Structure A — validate team objectives
+			if (!Array.isArray(campaign.teams) || !campaign.teams.length) {
+				return res.status(422).json({
+					message: "Campaign generation returned no teams. Try again.",
+				});
+			}
+			const badTeams = campaign.teams.filter((t) => !validLoc(t.objective));
+			if (badTeams.length) {
+				const details = badTeams.map((t) => `"${t.objective}"`).join(", ");
+				return res.status(422).json({
+					message: `AI selected invalid location(s) not found in ${province}: ${details}. Try generating again.`,
+				});
+			}
+		} else if (structure === "intel_then_strike") {
+			// Structure B — validate act1 and act2 objectives
+			if (!campaign.act1 || !campaign.act2) {
+				return res.status(422).json({
+					message: "Campaign generation missing act1 or act2. Try again.",
+				});
+			}
+			const badLocs = [campaign.act1.objective, campaign.act2.objective].filter(
+				(loc) => !validLoc(loc),
+			);
+			if (badLocs.length) {
+				const details = badLocs.map((l) => `"${l}"`).join(", ");
+				return res.status(422).json({
+					message: `AI selected invalid location(s) not found in ${province}: ${details}. Try generating again.`,
+				});
+			}
+		} else {
+			// Legacy sequential phases
+			if (!campaign.phases?.length) {
+				return res.status(422).json({
+					message: "Campaign generation returned no phases. Try again.",
+				});
+			}
+			const invalidPhases = campaign.phases.filter(
+				(p) => !validLoc(p.location),
+			);
+			if (invalidPhases.length) {
+				const details = invalidPhases.map((p) => `"${p.location}"`).join(", ");
+				return res.status(422).json({
+					message: `AI selected invalid location(s) not found in ${province}: ${details}. Try generating again.`,
+				});
+			}
+			campaign.phases = campaign.phases.map((p) => ({ ...p, province }));
 		}
-
-		// ── Validate location names ────────────────────────────────────────────
-		const invalidPhases = campaign.phases.filter(
-			(p) => !provinceLocationNames.some((name) => name.trim() === p.location?.trim()),
-		);
-
-		if (invalidPhases.length > 0) {
-			const details = invalidPhases.map((p) => `"${p.location}"`).join(", ");
-			return res.status(422).json({
-				message: `AI selected invalid location(s) not found in ${province}: ${details}. Try generating again.`,
-			});
-		}
-
-		// ── Stamp province onto every phase ───────────────────────────────────
-		campaign.phases = campaign.phases.map((p) => ({ ...p, province }));
 
 		res.status(200).json({ campaign });
 	} catch (error) {
