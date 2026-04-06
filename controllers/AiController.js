@@ -81,17 +81,21 @@ exports.generateCampaign = async (req, res) => {
 				});
 			}
 		} else if (structure === "intel_then_strike") {
-			// Structure B — validate act1 and act2 objectives
-			if (!campaign.act1 || !campaign.act2) {
+			// Structure B — act1 and act2 are arrays of phases
+			if (!Array.isArray(campaign.act1) || !campaign.act1.length) {
 				return res.status(422).json({
-					message: "Campaign generation missing act1 or act2. Try again.",
+					message: "Campaign generation returned no act1 phases. Try again.",
 				});
 			}
-			const badLocs = [campaign.act1.objective, campaign.act2.objective].filter(
-				(loc) => !validLoc(loc),
-			);
+			if (!Array.isArray(campaign.act2) || !campaign.act2.length) {
+				return res.status(422).json({
+					message: "Campaign generation returned no act2 phases. Try again.",
+				});
+			}
+			const allActPhases = [...campaign.act1, ...campaign.act2];
+			const badLocs = allActPhases.filter((p) => !validLoc(p.objective));
 			if (badLocs.length) {
-				const details = badLocs.map((l) => `"${l}"`).join(", ");
+				const details = badLocs.map((p) => `"${p.objective}"`).join(", ");
 				return res.status(422).json({
 					message: `AI selected invalid location(s) not found in ${province}: ${details}. Try generating again.`,
 				});
