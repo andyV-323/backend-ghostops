@@ -1,253 +1,222 @@
 const Vehicle = require("../models/Vehicle");
-
 const {
 	EventBridgeClient,
 	PutEventsCommand,
 } = require("@aws-sdk/client-eventbridge");
-// Initialize AWS EventBridge Client
-const eventBridge = new EventBridgeClient({ region: "us-east-1" }); // Update with your region
 
+const eventBridge = new EventBridgeClient({ region: "us-east-1" });
 const EVENT_BUS_NAME = "default";
 
-// Function to send event to AWS EventBridge
+// ─── EventBridge Helper ────────────────────────────────────────────────────
+
 const triggerVehicleRepair = async (vehicleId) => {
-	try {
-		const eventDetail = { vehicle_id: vehicleId };
-		const eventEntry = {
-			Source: "ghostopsai.vehicles",
-			DetailType: "RepairVehicle",
-			Detail: JSON.stringify(eventDetail),
-			EventBusName: EVENT_BUS_NAME,
-		};
+	const command = new PutEventsCommand({
+		Entries: [
+			{
+				Source: "ghostopsai.vehicles",
+				DetailType: "RepairVehicle",
+				Detail: JSON.stringify({ vehicle_id: vehicleId }),
+				EventBusName: EVENT_BUS_NAME,
+			},
+		],
+	});
 
-		const command = new PutEventsCommand({
-			Entries: [eventEntry],
-		});
+	const result = await eventBridge.send(command);
 
-		const result = await eventBridge.send(command);
-
-		if (result.FailedEntryCount && result.FailedEntryCount > 0) {
-			result.Entries.forEach((entry, index) => {
-				if (entry.ErrorCode) {
-					console.error(`Entry ${index}:`, entry.ErrorCode, entry.ErrorMessage);
-				}
-			});
-			throw new Error(
-				`EventBridge failed to send ${result.FailedEntryCount} events`
-			);
-		}
-	} catch (error) {
-		console.error("EventBridge error:", error.name);
-		console.error("Error message:", error.message);
-		console.error("Error stack:", error.stack);
-		throw error;
+	// EventBridge can partially fail even with a 200 — always check this
+	if (result.FailedEntryCount > 0) {
+		const failed = result.Entries.find((e) => e.ErrorCode);
+		throw new Error(
+			`EventBridge rejected event: ${failed?.ErrorCode} — ${failed?.ErrorMessage}`,
+		);
 	}
+
+	console.log(`[EventBridge] RepairVehicle event sent for ${vehicleId}`);
 };
 
-//POST a New Vehicle
-exports.createVehicle = async (req, res) => {
+// ─── Shared repair initiation logic ───────────────────────────────────────
+// Both repairVehicle and addVehicleRepair were doing identical work.
+// Extracted here to avoid duplication and ensure consistent rollback behavior.
+
+const initiateRepair = async (vehicleId, userId) => {
+	const vehicle = await Vehicle.findOne({ _id: vehicleId, createdBy: userId });
+
+	if (!vehicle) {
+		const err = new Error("Vehicle not found or unauthorized");
+		err.statusCode = 404;
+		throw err;
+	}
+
+	if (vehicle.condition === "Optimal") {
+		const err = new Error("Vehicle is already in optimal condition");
+		err.statusCode = 400;
+		throw err;
+	}
+
+	if (vehicle.isRepairing || vehicle.executionArn) {
+		const err = new Error("Vehicle repair is already in progress");
+		err.statusCode = 400;
+		err.executionArn = vehicle.executionArn;
+		throw err;
+	}
+
+	// Mark as repairing before firing EventBridge
+	await Vehicle.findByIdAndUpdate(vehicleId, { isRepairing: true });
+
 	try {
-		const userId = req.userId;
+		await triggerVehicleRepair(vehicleId);
+	} catch (eventError) {
+		// EventBridge failed — roll back isRepairing so vehicle isn't stuck
+		await Vehicle.findByIdAndUpdate(vehicleId, { isRepairing: false });
+		console.log(`[Vehicle] Rolled back isRepairing for ${vehicleId}`);
+		throw eventError;
+	}
 
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
+	return vehicle;
+};
 
-		const VehicleData = {
+// ─── Controllers ──────────────────────────────────────────────────────────
+
+// POST — Create a new vehicle
+exports.createVehicle = async (req, res) => {
+	const userId = req.userId;
+
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized: No User ID" });
+	}
+
+	try {
+		const vehicle = new Vehicle({
 			createdBy: userId,
 			nickName: req.body.nickname || "None",
 			vehicle: req.body.vehicle || "Resistance Car",
 			remainingFuel: req.body.remainingFuel || 100,
 			condition: req.body.condition || "Optimal",
 			repairTime: req.body.repairTime || 0,
-			isRepairing: req.body.isRepairing || false,
-		};
-
-		const vehicle = new Vehicle(VehicleData);
+			isRepairing: false,
+		});
 
 		await vehicle.save();
-		res.status(201).json({ message: "Vehicle created successfully!", vehicle });
+		return res
+			.status(201)
+			.json({ message: "Vehicle created successfully!", vehicle });
 	} catch (error) {
-		console.error("Error Creating Vehicle:", error.message);
-		res.status(400).json({ error: error.message });
+		console.error("[Vehicle] Error creating vehicle:", error.message);
+		return res.status(400).json({ error: error.message });
 	}
 };
 
-// GET All Vehicles by Cognito User
+// GET — All vehicles for this user
 exports.getVehicles = async (req, res) => {
+	const userId = req.userId;
+
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized: No User ID" });
+	}
+
 	try {
-		const userId = req.userId;
-
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-
-		//Only return vehicles created by the logged-in user
 		const vehicles = await Vehicle.find({ createdBy: userId });
-
-		res.status(200).json(vehicles);
+		return res.status(200).json(vehicles);
 	} catch (error) {
-		console.error("Error Fetching Vehicles:", error.message);
-		res.status(500).json({ error: error.message });
+		console.error("[Vehicle] Error fetching vehicles:", error.message);
+		return res.status(500).json({ error: error.message });
 	}
 };
 
-// GET a Single Vehicle by ID
+// GET — Single vehicle by ID
 exports.getVehicleById = async (req, res) => {
-	try {
-		if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
+	if (!req.userId) {
+		return res.status(401).json({ message: "Unauthorized" });
+	}
 
+	try {
 		const vehicle = await Vehicle.findOne({
 			_id: req.params.id,
 			createdBy: req.userId,
 		});
-		if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
 
-		res.status(200).json(vehicle);
+		if (!vehicle) {
+			return res.status(404).json({ message: "Vehicle not found" });
+		}
+
+		return res.status(200).json(vehicle);
 	} catch (error) {
-		res.status(500).json({ error: error.message });
+		console.error("[Vehicle] Error fetching vehicle:", error.message);
+		return res.status(500).json({ error: error.message });
 	}
 };
 
-// POST Vehicle Repair
+// POST — Initiate repair via route param ID (e.g. PATCH /vehicles/:id/repair)
 exports.repairVehicle = async (req, res) => {
+	const userId = req.userId;
+	const vehicleId = req.params.id;
+
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized: No User ID" });
+	}
+
 	try {
-		const userId = req.userId;
-		const vehicleId = req.params.id;
+		const vehicle = await initiateRepair(vehicleId, userId);
 
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-
-		// Check if Vehicle exists and belongs to user
-		const vehicle = await Vehicle.findOne({
-			_id: vehicleId,
-			createdBy: userId,
-		});
-
-		if (!vehicle) {
-			return res
-				.status(404)
-				.json({ message: "Vehicle not found or unauthorized" });
-		}
-
-		// Check conditions
-		if (vehicle.condition === "Optimal") {
-			return res
-				.status(400)
-				.json({ message: "Vehicle is already in optimal condition" });
-		}
-
-		// Check if vehicle is already being repaired
-		if (vehicle.isRepairing) {
-			return res.status(400).json({
-				message: "Vehicle repair is already in progress",
-				vehicleId: vehicleId,
-				executionArn: vehicle.executionArn,
-			});
-		}
-
-		if (vehicle.executionArn) {
-			return res.status(400).json({
-				message: "Vehicle repair is already in progress",
-				executionArn: vehicle.executionArn,
-			});
-		}
-
-		// Set vehicle as repairing before triggering the repair process
-		await Vehicle.findByIdAndUpdate(vehicleId, {
-			isRepairing: true,
-		});
-
-		// Trigger AWS EventBridge to Start Step Functions
-		await triggerVehicleRepair(vehicleId);
-
-		res.status(200).json({
+		return res.status(200).json({
 			message: "Vehicle repair process initiated successfully",
-			vehicleId: vehicleId,
+			vehicleId,
 			currentCondition: vehicle.condition,
 			estimatedRepairTime: vehicle.repairTime || 2,
 			isRepairing: true,
 		});
 	} catch (error) {
-		console.error("ERROR in repairVehicle controller:", error);
-		// If there's an error, make sure to reset isRepairing to false
-		if (req.params.id) {
-			await Vehicle.findByIdAndUpdate(req.params.id, { isRepairing: false });
-		}
-		res.status(500).json({ error: error.message });
+		console.error("[Vehicle] Error in repairVehicle:", error.message);
+		return res
+			.status(error.statusCode || 500)
+			.json({ error: error.message, executionArn: error.executionArn });
 	}
 };
 
-// Add Vehicle Repair
+// POST — Initiate repair via body vehicle ID (e.g. POST /vehicles/repair)
 exports.addVehicleRepair = async (req, res) => {
+	const userId = req.userId;
+	const vehicleId = req.body.vehicle;
+
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized: No User ID" });
+	}
+
 	try {
-		const userId = req.userId;
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
+		await initiateRepair(vehicleId, userId);
 
-		//Check if Vehicle Exists
-		const vehicle = await Vehicle.findOne({
-			_id: req.body.vehicle,
-			createdBy: userId,
-		});
-
-		if (!vehicle) {
-			return res
-				.status(404)
-				.json({ message: "Vehicle not found or unauthorized" });
-		}
-
-		// Check if vehicle is already being repaired
-		if (vehicle.isRepairing) {
-			return res.status(400).json({
-				message: "Vehicle repair is already in progress",
-				vehicleId: req.body.vehicle,
-			});
-		}
-
-		// Set vehicle as repairing
-		await Vehicle.findByIdAndUpdate(req.body.vehicle, {
-			isRepairing: true,
-		});
-
-		// Trigger AWS EventBridge to Start Step Functions
-		await triggerVehicleRepair(req.body.vehicle);
-
-		res.status(200).json({
+		return res.status(200).json({
 			message: "Vehicle repair initiated",
 			isRepairing: true,
 		});
 	} catch (error) {
-		console.error("Error Adding Vehicle to repair:", error.message);
-		// Reset isRepairing on error
-		if (req.body.vehicle) {
-			await Vehicle.findByIdAndUpdate(req.body.vehicle, { isRepairing: false });
-		}
-		res.status(400).json({ error: error.message });
+		console.error("[Vehicle] Error in addVehicleRepair:", error.message);
+		return res.status(error.statusCode || 500).json({ error: error.message });
 	}
 };
 
+// PUT — Update vehicle condition (called by Step Function Lambda on repair complete)
 exports.updateVehicleCondition = async (req, res) => {
+	const userId = req.userId;
+	const vehicleId = req.params.id;
+
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized: No User ID" });
+	}
+
 	try {
-		const userId = req.userId;
-		const vehicleId = req.params.id;
-
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-
-		// If the repair is complete (condition is "Optimal"), set isRepairing to false
 		const updateData = { ...req.body };
+
+		// When condition is restored to Optimal, clear repair state
 		if (req.body.condition === "Optimal") {
 			updateData.isRepairing = false;
+			updateData.executionArn = null;
 		}
 
 		const updatedCondition = await Vehicle.findOneAndUpdate(
 			{ _id: vehicleId, createdBy: userId },
 			updateData,
-			{ new: true, runValidators: true }
+			{ new: true, runValidators: true },
 		);
 
 		if (!updatedCondition) {
@@ -256,53 +225,56 @@ exports.updateVehicleCondition = async (req, res) => {
 				.json({ message: "Vehicle not found or unauthorized" });
 		}
 
-		//Send Recovery Event to AWS EventBridge with Execution ARN
-		if (updatedCondition.executionArn) {
-			await sendRepairEvent(updatedCondition._id);
-		}
+		// NOTE: sendRepairEvent was called here previously but was never defined.
+		// The StopStepFunctionOnRecovery EventBridge rule handles stopping the
+		// execution — no manual event needed from this controller.
 
-		res.status(200).json({
-			message: "Vehicle Condition updated successfully!",
+		return res.status(200).json({
+			message: "Vehicle condition updated successfully!",
 			vehicle: updatedCondition,
 		});
 	} catch (error) {
-		console.error("Error Updating Vehicle Condition:", error.message);
-		res.status(400).json({ error: error.message });
+		console.error("[Vehicle] Error updating condition:", error.message);
+		return res.status(400).json({ error: error.message });
 	}
 };
 
-// UPDATE Vehicle
+// PUT — General vehicle update
 exports.updateVehicle = async (req, res) => {
-	try {
-		if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
+	if (!req.userId) {
+		return res.status(401).json({ message: "Unauthorized" });
+	}
 
+	try {
 		const vehicle = await Vehicle.findOneAndUpdate(
 			{ _id: req.params.id, createdBy: req.userId },
 			req.body,
-			{ new: true }
+			{ new: true },
 		);
 
-		if (!vehicle)
+		if (!vehicle) {
 			return res
 				.status(404)
 				.json({ message: "Vehicle not found or unauthorized" });
+		}
 
-		res.status(200).json({ message: "Vehicle updated!", vehicle });
+		return res.status(200).json({ message: "Vehicle updated!", vehicle });
 	} catch (error) {
-		res.status(400).json({ error: error.message });
+		console.error("[Vehicle] Error updating vehicle:", error.message);
+		return res.status(400).json({ error: error.message });
 	}
 };
 
-//DELETE Vehicle
+// DELETE — Remove vehicle
 exports.deleteVehicle = async (req, res) => {
+	const userId = req.userId;
+	const vehicleId = req.params.id;
+
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized" });
+	}
+
 	try {
-		const userId = req.userId;
-		const vehicleId = req.params.id;
-
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized" });
-		}
-
 		const vehicle = await Vehicle.findOneAndDelete({
 			_id: vehicleId,
 			createdBy: userId,
@@ -314,23 +286,23 @@ exports.deleteVehicle = async (req, res) => {
 				.json({ message: "Vehicle not found or unauthorized" });
 		}
 
-		res.status(200).json({ message: "Vehicle deleted successfully!" });
+		return res.status(200).json({ message: "Vehicle deleted successfully!" });
 	} catch (error) {
-		console.error("Error Deleting Vehicle:", error.message);
-		res.status(500).json({ error: error.message });
+		console.error("[Vehicle] Error deleting vehicle:", error.message);
+		return res.status(500).json({ error: error.message });
 	}
 };
 
-// New endpoint to check if vehicle is available for use/refuel
+// GET — Check if vehicle is available (not repairing)
 exports.checkVehicleAvailability = async (req, res) => {
+	const userId = req.userId;
+	const vehicleId = req.params.id;
+
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized: No User ID" });
+	}
+
 	try {
-		const userId = req.userId;
-		const vehicleId = req.params.id;
-
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-
 		const vehicle = await Vehicle.findOne({
 			_id: vehicleId,
 			createdBy: userId,
@@ -344,32 +316,33 @@ exports.checkVehicleAvailability = async (req, res) => {
 
 		const isAvailable = !vehicle.isRepairing;
 
-		res.status(200).json({
-			vehicleId: vehicleId,
-			isAvailable: isAvailable,
+		return res.status(200).json({
+			vehicleId,
+			isAvailable,
 			isRepairing: vehicle.isRepairing,
 			condition: vehicle.condition,
-			message: isAvailable
-				? "Vehicle is available for use"
-				: "Vehicle is currently being repaired and unavailable",
+			message:
+				isAvailable ?
+					"Vehicle is available for use"
+				:	"Vehicle is currently being repaired and unavailable",
 		});
 	} catch (error) {
-		console.error("Error checking vehicle availability:", error.message);
-		res.status(500).json({ error: error.message });
+		console.error("[Vehicle] Error checking availability:", error.message);
+		return res.status(500).json({ error: error.message });
 	}
 };
 
-// New endpoint for refueling (with availability check)
+// POST — Refuel vehicle (blocked if repairing)
 exports.refuelVehicle = async (req, res) => {
+	const userId = req.userId;
+	const vehicleId = req.params.id;
+	const { fuelAmount } = req.body;
+
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized: No User ID" });
+	}
+
 	try {
-		const userId = req.userId;
-		const vehicleId = req.params.id;
-		const { fuelAmount } = req.body;
-
-		if (!userId) {
-			return res.status(401).json({ message: "Unauthorized: No User ID" });
-		}
-
 		const vehicle = await Vehicle.findOne({
 			_id: vehicleId,
 			createdBy: userId,
@@ -381,7 +354,6 @@ exports.refuelVehicle = async (req, res) => {
 				.json({ message: "Vehicle not found or unauthorized" });
 		}
 
-		// Check if vehicle is being repaired
 		if (vehicle.isRepairing) {
 			return res.status(400).json({
 				message: "Cannot refuel vehicle while it's being repaired",
@@ -389,7 +361,6 @@ exports.refuelVehicle = async (req, res) => {
 			});
 		}
 
-		// Validate fuel amount
 		if (!fuelAmount || fuelAmount <= 0) {
 			return res.status(400).json({ message: "Invalid fuel amount" });
 		}
@@ -399,16 +370,16 @@ exports.refuelVehicle = async (req, res) => {
 		const updatedVehicle = await Vehicle.findByIdAndUpdate(
 			vehicleId,
 			{ remainingFuel: newFuelLevel },
-			{ new: true }
+			{ new: true },
 		);
 
-		res.status(200).json({
+		return res.status(200).json({
 			message: "Vehicle refueled successfully!",
 			vehicle: updatedVehicle,
 			fuelAdded: newFuelLevel - vehicle.remainingFuel,
 		});
 	} catch (error) {
-		console.error("Error refueling vehicle:", error.message);
-		res.status(500).json({ error: error.message });
+		console.error("[Vehicle] Error refueling vehicle:", error.message);
+		return res.status(500).json({ error: error.message });
 	}
 };

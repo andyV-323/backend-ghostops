@@ -15,7 +15,8 @@ const s3Client = new S3Client({
 	},
 });
 
-const BUCKET_NAME = process.env.S3_BUCKET_NAME;
+const BUCKET_NAME      = process.env.S3_BUCKET_NAME;
+const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN; // e.g. https://d1234abcd.cloudfront.net
 
 /**
  * Upload image to S3 with compression
@@ -57,10 +58,13 @@ async function uploadImageToS3(fileBuffer, originalFilename) {
 		const command = new PutObjectCommand(uploadParams);
 		await s3Client.send(command);
 
-		// Return the public URL
-		const imageUrl = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || "us-east-1"}.amazonaws.com/${filename}`;
+		// Return CloudFront URL if configured, otherwise fall back to direct S3 URL
+		const baseUrl = CLOUDFRONT_DOMAIN
+			? CLOUDFRONT_DOMAIN.replace(/\/$/, "")
+			: `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || "us-east-1"}.amazonaws.com`;
+		const imageUrl = `${baseUrl}/${filename}`;
 
-		console.log(`Image uploaded to S3: ${imageUrl}`);
+		console.log(`Image uploaded — URL: ${imageUrl}`);
 		return imageUrl;
 	} catch (error) {
 		console.error("Error uploading to S3:", error);
@@ -74,19 +78,29 @@ async function uploadImageToS3(fileBuffer, originalFilename) {
  */
 async function deleteImageFromS3(imageUrl) {
 	try {
-		if (!imageUrl || !imageUrl.includes(BUCKET_NAME)) {
-			console.log("Not an S3 URL, skipping deletion");
+		if (!imageUrl) {
+			console.log("No image URL provided, skipping deletion");
 			return;
 		}
 
-		// Extract the key from the URL
-		// URL format: https://bucket.s3.region.amazonaws.com/operators/image.jpg
-		const urlParts = imageUrl.split(".amazonaws.com/");
-		if (urlParts.length !== 2) {
-			console.error("Invalid S3 URL format");
+		// Extract the S3 key from either a CloudFront or direct S3 URL
+		// CloudFront:  https://d1234abcd.cloudfront.net/operators/image.jpg
+		// S3 direct:   https://bucket.s3.region.amazonaws.com/operators/image.jpg
+		let key;
+		if (CLOUDFRONT_DOMAIN && imageUrl.startsWith(CLOUDFRONT_DOMAIN.replace(/\/$/, ""))) {
+			const base = CLOUDFRONT_DOMAIN.replace(/\/$/, "");
+			key = imageUrl.slice(base.length).replace(/^\//, "");
+		} else if (imageUrl.includes(".amazonaws.com/")) {
+			key = imageUrl.split(".amazonaws.com/")[1];
+		} else {
+			console.log("Unknown image URL format, skipping deletion:", imageUrl);
 			return;
 		}
-		const key = urlParts[1];
+
+		if (!key) {
+			console.error("Could not extract S3 key from URL:", imageUrl);
+			return;
+		}
 
 		const deleteParams = {
 			Bucket: BUCKET_NAME,
