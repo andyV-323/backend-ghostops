@@ -7,7 +7,42 @@ const {
 const eventBridge = new EventBridgeClient({ region: "us-east-1" });
 const EVENT_BUS_NAME = "default";
 
-// ─── EventBridge Helper ────────────────────────────────────────────────────
+// ─── Wear constants ────────────────────────────────────────────────────────────
+// Ground vehicles accumulate 3% wear per km — aggressive war-zone attrition.
+//   10 km op    →  30% wear   (Operational after first mission)
+//   20 km op    →  60% wear   (Compromised — nearly grounded)
+//   25 km op    →  75% wear   (Critical — GROUNDED, repair required)
+//
+// Aircraft wear is based on fuel percentage burned per sortie, not flight hours.
+// Aircraft timers are short (10–15 min total endurance), so hour-based math
+// produces near-zero wear. Instead: 1.8% wear per 1% of flight time consumed.
+//   20% flight time burned  →  36% wear  (Operational)
+//   40% flight time burned  →  72% wear  (Compromised, close to grounded)
+//   42% flight time burned  →  75% wear  (GROUNDED)
+// A single hard sortie that burns half the tank will ground the aircraft.
+
+const WEAR_PER_KM          = 3.0;   // ground: % per km
+const WEAR_PER_FUEL_PCT    = 1.8;   // aircraft: % wear per 1% fuel burned
+
+// Repair time scales linearly with wearPercent.
+//   25% wear → 1 h
+//   50% wear → 2 h
+//   75% wear → 3 h
+//  100% wear → 4 h
+function calcRepairTime(wearPercent) {
+	return Math.max(0.5, Math.round((wearPercent / 100) * 4 * 2) / 2); // rounds to nearest 0.5 h
+}
+
+// Derive a human-readable condition label from wearPercent.
+// Used only for display / backwards-compat — wearPercent is the source of truth.
+function deriveCondition(wearPercent) {
+	if (wearPercent < 25) return "Optimal";
+	if (wearPercent < 50) return "Operational";
+	if (wearPercent < 75) return "Compromised";
+	return "Critical";
+}
+
+// ─── EventBridge helper ────────────────────────────────────────────────────────
 
 const triggerVehicleRepair = async (vehicleId) => {
 	const command = new PutEventsCommand({
@@ -23,7 +58,6 @@ const triggerVehicleRepair = async (vehicleId) => {
 
 	const result = await eventBridge.send(command);
 
-	// EventBridge can partially fail even with a 200 — always check this
 	if (result.FailedEntryCount > 0) {
 		const failed = result.Entries.find((e) => e.ErrorCode);
 		throw new Error(
@@ -34,9 +68,7 @@ const triggerVehicleRepair = async (vehicleId) => {
 	console.log(`[EventBridge] RepairVehicle event sent for ${vehicleId}`);
 };
 
-// ─── Shared repair initiation logic ───────────────────────────────────────
-// Both repairVehicle and addVehicleRepair were doing identical work.
-// Extracted here to avoid duplication and ensure consistent rollback behavior.
+// ─── Shared repair initiation ──────────────────────────────────────────────────
 
 const initiateRepair = async (vehicleId, userId) => {
 	const vehicle = await Vehicle.findOne({ _id: vehicleId, createdBy: userId });
@@ -47,8 +79,8 @@ const initiateRepair = async (vehicleId, userId) => {
 		throw err;
 	}
 
-	if (vehicle.condition === "Optimal") {
-		const err = new Error("Vehicle is already in optimal condition");
+	if ((vehicle.wearPercent ?? 0) === 0) {
+		const err = new Error("Vehicle has no wear — repair not needed");
 		err.statusCode = 400;
 		throw err;
 	}
@@ -60,22 +92,23 @@ const initiateRepair = async (vehicleId, userId) => {
 		throw err;
 	}
 
-	// Mark as repairing before firing EventBridge
-	await Vehicle.findByIdAndUpdate(vehicleId, { isRepairing: true });
+	const repairTime = calcRepairTime(vehicle.wearPercent ?? 0);
+
+	// Persist repairTime and mark as repairing before firing EventBridge
+	await Vehicle.findByIdAndUpdate(vehicleId, { isRepairing: true, repairTime });
 
 	try {
 		await triggerVehicleRepair(vehicleId);
 	} catch (eventError) {
-		// EventBridge failed — roll back isRepairing so vehicle isn't stuck
 		await Vehicle.findByIdAndUpdate(vehicleId, { isRepairing: false });
 		console.log(`[Vehicle] Rolled back isRepairing for ${vehicleId}`);
 		throw eventError;
 	}
 
-	return vehicle;
+	return { ...vehicle.toObject(), repairTime };
 };
 
-// ─── Controllers ──────────────────────────────────────────────────────────
+// ─── Controllers ───────────────────────────────────────────────────────────────
 
 // POST — Create a new vehicle
 exports.createVehicle = async (req, res) => {
@@ -90,16 +123,13 @@ exports.createVehicle = async (req, res) => {
 			createdBy: userId,
 			nickName: req.body.nickname || "None",
 			vehicle: req.body.vehicle || "Resistance Car",
-			remainingFuel: req.body.remainingFuel || 100,
-			condition: req.body.condition || "Optimal",
-			repairTime: req.body.repairTime || 0,
+			remainingFuel: req.body.remainingFuel ?? 100,
+			wearPercent: 0,
 			isRepairing: false,
 		});
 
 		await vehicle.save();
-		return res
-			.status(201)
-			.json({ message: "Vehicle created successfully!", vehicle });
+		return res.status(201).json({ message: "Vehicle created successfully!", vehicle });
 	} catch (error) {
 		console.error("[Vehicle] Error creating vehicle:", error.message);
 		return res.status(400).json({ error: error.message });
@@ -130,10 +160,7 @@ exports.getVehicleById = async (req, res) => {
 	}
 
 	try {
-		const vehicle = await Vehicle.findOne({
-			_id: req.params.id,
-			createdBy: req.userId,
-		});
+		const vehicle = await Vehicle.findOne({ _id: req.params.id, createdBy: req.userId });
 
 		if (!vehicle) {
 			return res.status(404).json({ message: "Vehicle not found" });
@@ -146,7 +173,7 @@ exports.getVehicleById = async (req, res) => {
 	}
 };
 
-// POST — Initiate repair via route param ID (e.g. PATCH /vehicles/:id/repair)
+// POST — Initiate repair (route param ID)
 exports.repairVehicle = async (req, res) => {
 	const userId = req.userId;
 	const vehicleId = req.params.id;
@@ -161,19 +188,17 @@ exports.repairVehicle = async (req, res) => {
 		return res.status(200).json({
 			message: "Vehicle repair process initiated successfully",
 			vehicleId,
-			currentCondition: vehicle.condition,
-			estimatedRepairTime: vehicle.repairTime || 2,
+			wearPercent: vehicle.wearPercent,
+			estimatedRepairTime: vehicle.repairTime,
 			isRepairing: true,
 		});
 	} catch (error) {
 		console.error("[Vehicle] Error in repairVehicle:", error.message);
-		return res
-			.status(error.statusCode || 500)
-			.json({ error: error.message, executionArn: error.executionArn });
+		return res.status(error.statusCode || 500).json({ error: error.message, executionArn: error.executionArn });
 	}
 };
 
-// POST — Initiate repair via body vehicle ID (e.g. POST /vehicles/repair)
+// POST — Initiate repair (body vehicle ID)
 exports.addVehicleRepair = async (req, res) => {
 	const userId = req.userId;
 	const vehicleId = req.body.vehicle;
@@ -183,10 +208,11 @@ exports.addVehicleRepair = async (req, res) => {
 	}
 
 	try {
-		await initiateRepair(vehicleId, userId);
+		const vehicle = await initiateRepair(vehicleId, userId);
 
 		return res.status(200).json({
 			message: "Vehicle repair initiated",
+			estimatedRepairTime: vehicle.repairTime,
 			isRepairing: true,
 		});
 	} catch (error) {
@@ -195,7 +221,8 @@ exports.addVehicleRepair = async (req, res) => {
 	}
 };
 
-// PUT — Update vehicle condition (called by Step Function Lambda on repair complete)
+// PUT — Called by Step Function Lambda when repair is complete.
+// Lambda sends { condition: "Optimal" } — we treat this as a full wear reset.
 exports.updateVehicleCondition = async (req, res) => {
 	const userId = req.userId;
 	const vehicleId = req.params.id;
@@ -205,33 +232,27 @@ exports.updateVehicleCondition = async (req, res) => {
 	}
 
 	try {
-		const updateData = { ...req.body };
+		// Regardless of what the Lambda sends, completing a repair means wearPercent → 0
+		const updateData = {
+			wearPercent: 0,
+			isRepairing: false,
+			executionArn: null,
+			repairTime: 0,
+		};
 
-		// When condition is restored to Optimal, clear repair state
-		if (req.body.condition === "Optimal") {
-			updateData.isRepairing = false;
-			updateData.executionArn = null;
-		}
-
-		const updatedCondition = await Vehicle.findOneAndUpdate(
+		const updatedVehicle = await Vehicle.findOneAndUpdate(
 			{ _id: vehicleId, createdBy: userId },
 			updateData,
 			{ new: true, runValidators: true },
 		);
 
-		if (!updatedCondition) {
-			return res
-				.status(404)
-				.json({ message: "Vehicle not found or unauthorized" });
+		if (!updatedVehicle) {
+			return res.status(404).json({ message: "Vehicle not found or unauthorized" });
 		}
 
-		// NOTE: sendRepairEvent was called here previously but was never defined.
-		// The StopStepFunctionOnRecovery EventBridge rule handles stopping the
-		// execution — no manual event needed from this controller.
-
 		return res.status(200).json({
-			message: "Vehicle condition updated successfully!",
-			vehicle: updatedCondition,
+			message: "Vehicle repaired — wear reset to 0.",
+			vehicle: updatedVehicle,
 		});
 	} catch (error) {
 		console.error("[Vehicle] Error updating condition:", error.message);
@@ -253,9 +274,7 @@ exports.updateVehicle = async (req, res) => {
 		);
 
 		if (!vehicle) {
-			return res
-				.status(404)
-				.json({ message: "Vehicle not found or unauthorized" });
+			return res.status(404).json({ message: "Vehicle not found or unauthorized" });
 		}
 
 		return res.status(200).json({ message: "Vehicle updated!", vehicle });
@@ -275,15 +294,10 @@ exports.deleteVehicle = async (req, res) => {
 	}
 
 	try {
-		const vehicle = await Vehicle.findOneAndDelete({
-			_id: vehicleId,
-			createdBy: userId,
-		});
+		const vehicle = await Vehicle.findOneAndDelete({ _id: vehicleId, createdBy: userId });
 
 		if (!vehicle) {
-			return res
-				.status(404)
-				.json({ message: "Vehicle not found or unauthorized" });
+			return res.status(404).json({ message: "Vehicle not found or unauthorized" });
 		}
 
 		return res.status(200).json({ message: "Vehicle deleted successfully!" });
@@ -293,7 +307,7 @@ exports.deleteVehicle = async (req, res) => {
 	}
 };
 
-// GET — Check if vehicle is available (not repairing)
+// GET — Check vehicle availability
 exports.checkVehicleAvailability = async (req, res) => {
 	const userId = req.userId;
 	const vehicleId = req.params.id;
@@ -303,28 +317,26 @@ exports.checkVehicleAvailability = async (req, res) => {
 	}
 
 	try {
-		const vehicle = await Vehicle.findOne({
-			_id: vehicleId,
-			createdBy: userId,
-		});
+		const vehicle = await Vehicle.findOne({ _id: vehicleId, createdBy: userId });
 
 		if (!vehicle) {
-			return res
-				.status(404)
-				.json({ message: "Vehicle not found or unauthorized" });
+			return res.status(404).json({ message: "Vehicle not found or unauthorized" });
 		}
 
-		const isAvailable = !vehicle.isRepairing;
+		const wear = vehicle.wearPercent ?? 0;
+		const isCritical = wear >= 75;
+		const isAvailable = !vehicle.isRepairing && !isCritical;
 
 		return res.status(200).json({
 			vehicleId,
 			isAvailable,
 			isRepairing: vehicle.isRepairing,
-			condition: vehicle.condition,
+			wearPercent: wear,
+			condition: deriveCondition(wear),
 			message:
-				isAvailable ?
-					"Vehicle is available for use"
-				:	"Vehicle is currently being repaired and unavailable",
+				vehicle.isRepairing ? "Vehicle is currently being repaired"
+				: isCritical        ? "Vehicle is critically worn — repair required before deployment"
+				:                     "Vehicle is available for deployment",
 		});
 	} catch (error) {
 		console.error("[Vehicle] Error checking availability:", error.message);
@@ -332,7 +344,7 @@ exports.checkVehicleAvailability = async (req, res) => {
 	}
 };
 
-// POST — Refuel vehicle (blocked if repairing)
+// POST — Refuel vehicle (blocked if repairing or critically worn)
 exports.refuelVehicle = async (req, res) => {
 	const userId = req.userId;
 	const vehicleId = req.params.id;
@@ -343,22 +355,18 @@ exports.refuelVehicle = async (req, res) => {
 	}
 
 	try {
-		const vehicle = await Vehicle.findOne({
-			_id: vehicleId,
-			createdBy: userId,
-		});
+		const vehicle = await Vehicle.findOne({ _id: vehicleId, createdBy: userId });
 
 		if (!vehicle) {
-			return res
-				.status(404)
-				.json({ message: "Vehicle not found or unauthorized" });
+			return res.status(404).json({ message: "Vehicle not found or unauthorized" });
 		}
 
 		if (vehicle.isRepairing) {
-			return res.status(400).json({
-				message: "Cannot refuel vehicle while it's being repaired",
-				isRepairing: true,
-			});
+			return res.status(400).json({ message: "Cannot refuel while repairing", isRepairing: true });
+		}
+
+		if ((vehicle.wearPercent ?? 0) >= 75) {
+			return res.status(400).json({ message: "Critical wear — repair before refueling" });
 		}
 
 		if (!fuelAmount || fuelAmount <= 0) {
@@ -366,7 +374,6 @@ exports.refuelVehicle = async (req, res) => {
 		}
 
 		const newFuelLevel = Math.min(vehicle.remainingFuel + fuelAmount, 100);
-
 		const updatedVehicle = await Vehicle.findByIdAndUpdate(
 			vehicleId,
 			{ remainingFuel: newFuelLevel },
@@ -380,6 +387,100 @@ exports.refuelVehicle = async (req, res) => {
 		});
 	} catch (error) {
 		console.error("[Vehicle] Error refueling vehicle:", error.message);
+		return res.status(500).json({ error: error.message });
+	}
+};
+
+// POST — Log a ground vehicle trip
+// Body: { distanceKm, fuelBurned }
+// Accumulates 0.8% wear per km. At 75%+ wear the vehicle becomes Critical.
+exports.logTrip = async (req, res) => {
+	const userId = req.userId;
+	const vehicleId = req.params.id;
+	const { distanceKm, fuelBurned } = req.body;
+
+	if (!userId) return res.status(401).json({ message: "Unauthorized: No User ID" });
+	if (!distanceKm || distanceKm <= 0) return res.status(400).json({ message: "Invalid distanceKm" });
+
+	try {
+		const vehicle = await Vehicle.findOne({ _id: vehicleId, createdBy: userId });
+		if (!vehicle) return res.status(404).json({ message: "Vehicle not found or unauthorized" });
+		if (vehicle.isRepairing) return res.status(400).json({ message: "Vehicle is being repaired" });
+
+		const currentWear = vehicle.wearPercent ?? 0;
+		if (currentWear >= 75) {
+			return res.status(400).json({ message: "Critical wear — repair before deploying" });
+		}
+
+		const wearGained   = distanceKm * WEAR_PER_KM;
+		const newWear      = Math.min(100, currentWear + wearGained);
+		const newFuel      = Math.max(0, (vehicle.remainingFuel ?? 100) - (fuelBurned ?? 0));
+		const newMileage   = (vehicle.totalMileage ?? 0) + distanceKm;
+		const prevCond     = deriveCondition(currentWear);
+		const newCond      = deriveCondition(newWear);
+
+		const updatedVehicle = await Vehicle.findByIdAndUpdate(
+			vehicleId,
+			{ wearPercent: newWear, remainingFuel: newFuel, totalMileage: newMileage },
+			{ new: true },
+		);
+
+		return res.status(200).json({
+			message: "Trip logged.",
+			vehicle: updatedVehicle,
+			wearGained: parseFloat(wearGained.toFixed(1)),
+			conditionChanged: newCond !== prevCond,
+			newCondition: newCond,
+		});
+	} catch (error) {
+		console.error("[Vehicle] Error logging trip:", error.message);
+		return res.status(500).json({ error: error.message });
+	}
+};
+
+// POST — Log an aircraft sortie
+// Body: { hours, fuelBurned }
+// Accumulates 8% wear per flight hour. At 75%+ wear the aircraft becomes Critical.
+exports.logSortie = async (req, res) => {
+	const userId = req.userId;
+	const vehicleId = req.params.id;
+	const { hours, fuelBurned } = req.body;
+
+	if (!userId) return res.status(401).json({ message: "Unauthorized: No User ID" });
+	if (!hours || hours <= 0) return res.status(400).json({ message: "Invalid hours" });
+
+	try {
+		const vehicle = await Vehicle.findOne({ _id: vehicleId, createdBy: userId });
+		if (!vehicle) return res.status(404).json({ message: "Vehicle not found or unauthorized" });
+		if (vehicle.isRepairing) return res.status(400).json({ message: "Vehicle is being repaired" });
+
+		const currentWear = vehicle.wearPercent ?? 0;
+		if (currentWear >= 75) {
+			return res.status(400).json({ message: "Critical wear — repair before deploying" });
+		}
+
+		const wearGained    = (fuelBurned ?? 0) * WEAR_PER_FUEL_PCT;
+		const newWear       = Math.min(100, currentWear + wearGained);
+		const newFuel       = Math.max(0, (vehicle.remainingFuel ?? 100) - (fuelBurned ?? 0));
+		const newFlightHrs  = (vehicle.flightHours ?? 0) + hours;
+		const prevCond      = deriveCondition(currentWear);
+		const newCond       = deriveCondition(newWear);
+
+		const updatedVehicle = await Vehicle.findByIdAndUpdate(
+			vehicleId,
+			{ wearPercent: newWear, remainingFuel: newFuel, flightHours: newFlightHrs },
+			{ new: true },
+		);
+
+		return res.status(200).json({
+			message: "Sortie logged.",
+			vehicle: updatedVehicle,
+			wearGained: parseFloat(wearGained.toFixed(1)),
+			conditionChanged: newCond !== prevCond,
+			newCondition: newCond,
+		});
+	} catch (error) {
+		console.error("[Vehicle] Error logging sortie:", error.message);
 		return res.status(500).json({ error: error.message });
 	}
 };

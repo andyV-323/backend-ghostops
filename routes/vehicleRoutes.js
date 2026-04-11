@@ -12,6 +12,8 @@ const {
 	updateVehicleCondition,
 	checkVehicleAvailability,
 	refuelVehicle,
+	logTrip,
+	logSortie,
 } = require("../controllers/VehicleController");
 
 // Vehicle CRUD routes
@@ -29,5 +31,9 @@ router.put("/:id/condition", updateVehicleCondition);
 // Availability and refuel routes
 router.get("/:id/availability", checkVehicleAvailability);
 router.post("/:id/refuel", refuelVehicle);
+
+// Usage / wear routes
+router.post("/:id/trip", logTrip);
+router.post("/:id/sortie", logSortie);
 
 module.exports = router;
