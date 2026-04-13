@@ -8,21 +8,24 @@ const eventBridge = new EventBridgeClient({ region: "us-east-1" });
 const EVENT_BUS_NAME = "default";
 
 // ─── Wear constants ────────────────────────────────────────────────────────────
-// Ground vehicles accumulate 3% wear per km — aggressive war-zone attrition.
-//   10 km op    →  30% wear   (Operational after first mission)
-//   20 km op    →  60% wear   (Compromised — nearly grounded)
-//   25 km op    →  75% wear   (Critical — GROUNDED, repair required)
+// Design target: fuel should deplete before wear becomes critical under
+// normal use. Extended or repeated operations grind vehicles down.
 //
-// Aircraft wear is based on fuel percentage burned per sortie, not flight hours.
-// Aircraft timers are short (10–15 min total endurance), so hour-based math
-// produces near-zero wear. Instead: 1.8% wear per 1% of flight time consumed.
-//   20% flight time burned  →  36% wear  (Operational)
-//   40% flight time burned  →  72% wear  (Compromised, close to grounded)
-//   42% flight time burned  →  75% wear  (GROUNDED)
-// A single hard sortie that burns half the tank will ground the aircraft.
+// Ground — 0.3% wear per km:
+//   Typical vehicle range ~150–200 km (one full tank).
+//   100 km op  →  30% wear  (Operational — one long mission)
+//   150 km op  →  45% wear  (mid-Operational — full tank nearly gone)
+//   250 km op  →  75% wear  (GROUNDED — roughly 1.5 full tanks total)
+//   Players need to refuel ~1–2 times before repair is required.
+//
+// Aircraft — 0.5% wear per 1% fuel burned:
+//   25% fuel sortie  →  12.5% wear  (light op, minimal attrition)
+//   50% fuel sortie  →  25% wear    (moderate sortie, Operational)
+//   Full-tank sortie →  50% wear    (Compromised after one heavy op)
+//   GROUNDED after ~1.5 full sorties, or 3 sorties at 50% fuel each.
 
-const WEAR_PER_KM          = 3.0;   // ground: % per km
-const WEAR_PER_FUEL_PCT    = 1.8;   // aircraft: % wear per 1% fuel burned
+const WEAR_PER_KM       = 0.3;   // ground: % per km
+const WEAR_PER_FUEL_PCT = 0.5;   // aircraft: % wear per 1% fuel burned
 
 // Repair time scales linearly with wearPercent.
 //   25% wear → 1 h
