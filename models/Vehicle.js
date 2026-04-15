@@ -30,8 +30,8 @@ const vehicleSchema = new mongoose.Schema({
 	executionArn: { type: String, default: null },
 
 	// ── Odometers (lifetime, never reset) ────────────────────────────────────
-	totalMileage: { type: Number, default: 0 },      // ground vehicles: km
-	flightHours:  { type: Number, default: 0 },      // aircraft: hours
+	totalMinutes: { type: Number, default: 0 },      // all vehicles: total operational minutes
+	flightHours:  { type: Number, default: 0 },      // aircraft: hours (kept for backwards compat)
 });
 
 module.exports = mongoose.model("Vehicle", vehicleSchema);

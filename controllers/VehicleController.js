@@ -7,25 +7,16 @@ const {
 const eventBridge = new EventBridgeClient({ region: "us-east-1" });
 const EVENT_BUS_NAME = "default";
 
-// ─── Wear constants ────────────────────────────────────────────────────────────
-// Design target: fuel should deplete before wear becomes critical under
-// normal use. Extended or repeated operations grind vehicles down.
+// ─── Wear system ───────────────────────────────────────────────────────────────
+// Wear is now time-based and pre-calculated by the frontend.
+// Each vehicle has a wearRate (%/min) defined in the garage config.
+// The frontend sends wearAdded = minutesUsed * wearRate — backend applies it directly.
 //
-// Ground — 0.3% wear per km:
-//   Typical vehicle range ~150–200 km (one full tank).
-//   100 km op  →  30% wear  (Operational — one long mission)
-//   150 km op  →  45% wear  (mid-Operational — full tank nearly gone)
-//   250 km op  →  75% wear  (GROUNDED — roughly 1.5 full tanks total)
-//   Players need to refuel ~1–2 times before repair is required.
-//
-// Aircraft — 0.5% wear per 1% fuel burned:
-//   25% fuel sortie  →  12.5% wear  (light op, minimal attrition)
-//   50% fuel sortie  →  25% wear    (moderate sortie, Operational)
-//   Full-tank sortie →  50% wear    (Compromised after one heavy op)
-//   GROUNDED after ~1.5 full sorties, or 3 sorties at 50% fuel each.
-
-const WEAR_PER_KM       = 0.3;   // ground: % per km
-const WEAR_PER_FUEL_PCT = 0.5;   // aircraft: % wear per 1% fuel burned
+// Condition thresholds (wearPercent):
+//   0–24%  → Optimal
+//   25–49% → Operational
+//   50–74% → Compromised
+//   75%+   → Critical (grounded until repaired)
 
 // Repair time scales linearly with wearPercent.
 //   25% wear → 1 h
@@ -122,11 +113,13 @@ exports.createVehicle = async (req, res) => {
 	}
 
 	try {
+		const startingFuel = Math.floor(Math.random() * 99) + 2; // 2–100%
+
 		const vehicle = new Vehicle({
 			createdBy: userId,
 			nickName: req.body.nickname || "None",
 			vehicle: req.body.vehicle || "Resistance Car",
-			remainingFuel: req.body.remainingFuel ?? 100,
+			remainingFuel: startingFuel,
 			wearPercent: 0,
 			isRepairing: false,
 		});
@@ -225,34 +218,24 @@ exports.addVehicleRepair = async (req, res) => {
 };
 
 // PUT — Called by Step Function Lambda when repair is complete.
-// Lambda sends { condition: "Optimal" } — we treat this as a full wear reset.
+// Lambda sends { condition: "Optimal" } — we reset wearPercent to 0 regardless.
+// This is an internal service callback — looked up by vehicleId only,
+// not by createdBy, since the Lambda does not carry the vehicle owner's token.
 exports.updateVehicleCondition = async (req, res) => {
-	const userId = req.userId;
 	const vehicleId = req.params.id;
 
-	if (!userId) {
-		return res.status(401).json({ message: "Unauthorized: No User ID" });
-	}
-
 	try {
-		// Regardless of what the Lambda sends, completing a repair means wearPercent → 0
-		const updateData = {
-			wearPercent: 0,
-			isRepairing: false,
-			executionArn: null,
-			repairTime: 0,
-		};
-
-		const updatedVehicle = await Vehicle.findOneAndUpdate(
-			{ _id: vehicleId, createdBy: userId },
-			updateData,
+		const updatedVehicle = await Vehicle.findByIdAndUpdate(
+			vehicleId,
+			{ wearPercent: 0, isRepairing: false, executionArn: null, repairTime: 0 },
 			{ new: true, runValidators: true },
 		);
 
 		if (!updatedVehicle) {
-			return res.status(404).json({ message: "Vehicle not found or unauthorized" });
+			return res.status(404).json({ message: "Vehicle not found" });
 		}
 
+		console.log(`[Vehicle] Repair complete — wearPercent reset to 0 for ${vehicleId}`);
 		return res.status(200).json({
 			message: "Vehicle repaired — wear reset to 0.",
 			vehicle: updatedVehicle,
@@ -394,16 +377,16 @@ exports.refuelVehicle = async (req, res) => {
 	}
 };
 
-// POST — Log a ground vehicle trip
-// Body: { distanceKm, fuelBurned }
-// Accumulates 0.8% wear per km. At 75%+ wear the vehicle becomes Critical.
+// POST — Log a ground vehicle deployment
+// Body: { minutesUsed, wearAdded, fuelBurned }
+// wearAdded is pre-calculated by the frontend: minutesUsed * vehicle.wearRate
 exports.logTrip = async (req, res) => {
-	const userId = req.userId;
+	const userId    = req.userId;
 	const vehicleId = req.params.id;
-	const { distanceKm, fuelBurned } = req.body;
+	const { minutesUsed, wearAdded, fuelBurned } = req.body;
 
 	if (!userId) return res.status(401).json({ message: "Unauthorized: No User ID" });
-	if (!distanceKm || distanceKm <= 0) return res.status(400).json({ message: "Invalid distanceKm" });
+	if (!minutesUsed || minutesUsed <= 0) return res.status(400).json({ message: "Invalid minutesUsed" });
 
 	try {
 		const vehicle = await Vehicle.findOne({ _id: vehicleId, createdBy: userId });
@@ -415,16 +398,16 @@ exports.logTrip = async (req, res) => {
 			return res.status(400).json({ message: "Critical wear — repair before deploying" });
 		}
 
-		const wearGained   = distanceKm * WEAR_PER_KM;
-		const newWear      = Math.min(100, currentWear + wearGained);
-		const newFuel      = Math.max(0, (vehicle.remainingFuel ?? 100) - (fuelBurned ?? 0));
-		const newMileage   = (vehicle.totalMileage ?? 0) + distanceKm;
-		const prevCond     = deriveCondition(currentWear);
-		const newCond      = deriveCondition(newWear);
+		const wearGained    = wearAdded ?? 0;
+		const newWear       = Math.min(100, currentWear + wearGained);
+		const newFuel       = Math.max(0, (vehicle.remainingFuel ?? 100) - (fuelBurned ?? 0));
+		const newMinutes    = (vehicle.totalMinutes ?? 0) + minutesUsed;
+		const prevCond      = deriveCondition(currentWear);
+		const newCond       = deriveCondition(newWear);
 
 		const updatedVehicle = await Vehicle.findByIdAndUpdate(
 			vehicleId,
-			{ wearPercent: newWear, remainingFuel: newFuel, totalMileage: newMileage },
+			{ wearPercent: newWear, remainingFuel: newFuel, totalMinutes: newMinutes },
 			{ new: true },
 		);
 
@@ -442,15 +425,15 @@ exports.logTrip = async (req, res) => {
 };
 
 // POST — Log an aircraft sortie
-// Body: { hours, fuelBurned }
-// Accumulates 8% wear per flight hour. At 75%+ wear the aircraft becomes Critical.
+// Body: { minutesUsed, wearAdded, fuelBurned }
+// wearAdded is pre-calculated by the frontend: minutesUsed * vehicle.wearRate
 exports.logSortie = async (req, res) => {
-	const userId = req.userId;
+	const userId    = req.userId;
 	const vehicleId = req.params.id;
-	const { hours, fuelBurned } = req.body;
+	const { minutesUsed, wearAdded, fuelBurned } = req.body;
 
 	if (!userId) return res.status(401).json({ message: "Unauthorized: No User ID" });
-	if (!hours || hours <= 0) return res.status(400).json({ message: "Invalid hours" });
+	if (!minutesUsed || minutesUsed <= 0) return res.status(400).json({ message: "Invalid minutesUsed" });
 
 	try {
 		const vehicle = await Vehicle.findOne({ _id: vehicleId, createdBy: userId });
@@ -462,16 +445,17 @@ exports.logSortie = async (req, res) => {
 			return res.status(400).json({ message: "Critical wear — repair before deploying" });
 		}
 
-		const wearGained    = (fuelBurned ?? 0) * WEAR_PER_FUEL_PCT;
-		const newWear       = Math.min(100, currentWear + wearGained);
-		const newFuel       = Math.max(0, (vehicle.remainingFuel ?? 100) - (fuelBurned ?? 0));
-		const newFlightHrs  = (vehicle.flightHours ?? 0) + hours;
-		const prevCond      = deriveCondition(currentWear);
-		const newCond       = deriveCondition(newWear);
+		const wearGained   = wearAdded ?? 0;
+		const newWear      = Math.min(100, currentWear + wearGained);
+		const newFuel      = Math.max(0, (vehicle.remainingFuel ?? 100) - (fuelBurned ?? 0));
+		const newMinutes   = (vehicle.totalMinutes ?? 0) + minutesUsed;
+		const newFlightHrs = (vehicle.flightHours ?? 0) + (minutesUsed / 60);
+		const prevCond     = deriveCondition(currentWear);
+		const newCond      = deriveCondition(newWear);
 
 		const updatedVehicle = await Vehicle.findByIdAndUpdate(
 			vehicleId,
-			{ wearPercent: newWear, remainingFuel: newFuel, flightHours: newFlightHrs },
+			{ wearPercent: newWear, remainingFuel: newFuel, totalMinutes: newMinutes, flightHours: newFlightHrs },
 			{ new: true },
 		);
 
