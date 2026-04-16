@@ -4,6 +4,7 @@
 ![Express](https://img.shields.io/badge/Express-4-000000?style=flat-square&logo=express&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-Cognito_|_S3_|_EventBridge-FF9900?style=flat-square&logo=amazonaws&logoColor=white)
+![Groq](https://img.shields.io/badge/Groq-AI-F55036?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 
 REST API for the GhostOpsAI platform. Manages operators, teams, vehicles, missions, and infirmary data — protected by AWS Cognito JWT authentication and backed by MongoDB.
@@ -12,6 +13,7 @@ REST API for the GhostOpsAI platform. Manages operators, teams, vehicles, missio
 
 ## Table of Contents
 
+- [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [API Reference](#api-reference)
@@ -19,6 +21,14 @@ REST API for the GhostOpsAI platform. Manages operators, teams, vehicles, missio
 - [Authentication](#authentication)
 - [Getting Started](#getting-started)
 - [CORS](#cors)
+
+---
+
+## Architecture
+
+![GhostOpsAI AWS Architecture](docs/architecture.png)
+
+The backend runs on **AWS LightSail** (Node/Express) behind CloudFront and AWS WAF. Cognito JWTs protect every endpoint. MongoDB persists all data. Two **Serverless Recovery Engines** handle async workflows — one for operator injury recovery, one for vehicle repair — each driven by EventBridge, Step Functions, and Lambda. Operator images are stored in **S3**. AI mission generation is powered by **Groq**.
 
 ---
 
@@ -32,6 +42,7 @@ REST API for the GhostOpsAI platform. Manages operators, teams, vehicles, missio
 | File Storage | AWS S3 + Multer |
 | Event Bus | AWS EventBridge (vehicle repair workflow) |
 | Image Processing | Sharp |
+| AI | Groq API |
 | Runtime | Node.js 18+ |
 
 ---
@@ -156,7 +167,7 @@ All endpoints require `Authorization: Bearer <token>` (Cognito JWT) unless noted
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/ai/generate` | Generate a mission using Claude AI |
+| `POST` | `/api/ai/generate` | Generate a mission using Groq AI |
 
 ---
 
@@ -243,8 +254,8 @@ AWS_REGION=us-east-1
 # AWS S3
 S3_BUCKET_NAME=your-bucket-name
 
-# Claude AI
-ANTHROPIC_API_KEY=your_anthropic_key
+# Groq AI
+GROQ_API_KEY=your_groq_api_key
 ```
 
 ### Running Locally
