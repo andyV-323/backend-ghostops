@@ -26,7 +26,7 @@ REST API for the GhostOpsAI platform. Manages operators, teams, vehicles, missio
 
 ## Architecture
 
-![GhostOpsAI AWS Architecture](docs/architecture.png)
+![GhostOpsAI AWS Architecture](docs/GhostopsAI_Diagram.png)
 
 The backend runs on **AWS LightSail** (Node/Express) behind CloudFront and AWS WAF. Cognito JWTs protect every endpoint. MongoDB persists all data. Two **Serverless Recovery Engines** handle async workflows — one for operator injury recovery, one for vehicle repair — each driven by EventBridge, Step Functions, and Lambda. Operator images are stored in **S3**. AI mission generation is powered by **Groq**.
 
