@@ -5,7 +5,6 @@ const cors = require("cors");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
 const operatorRoutes = require("./routes/operatorRoutes");
 const teamRoutes = require("./routes/teamRoutes");
-const squadRoutes = require("./routes/squadRoutes");
 const infirmaryRoutes = require("./routes/infirmaryRoutes");
 const memorialRoutes = require("./routes/memorialRoutes");
 const vehicleRoutes = require("./routes/vehicleRoutes");
@@ -51,7 +50,6 @@ async function authenticate(req, res, next) {
 //Protected Routes with Cognito Auth
 app.use("/api/operators", authenticate, operatorRoutes);
 app.use("/api/teams", authenticate, teamRoutes);
-app.use("/api/squads", authenticate, squadRoutes);
 app.use("/api/infirmary", authenticate, infirmaryRoutes);
 app.use("/api/memorial", authenticate, memorialRoutes);
 app.use("/api/missions", authenticate, missionRoutes);

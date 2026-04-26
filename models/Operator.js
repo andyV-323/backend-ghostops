@@ -21,11 +21,6 @@ const operatorSchema = new mongoose.Schema({
 	sideArm: { type: String, default: null },
 	items: { type: [String], default: [] },
 	perks: { type: [String], default: [] },
-	squad: {
-		type: mongoose.Schema.Types.ObjectId,
-		ref: "Squad",
-		default: null,
-	},
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);

@@ -14,10 +14,7 @@ exports.createOperator = async (req, res) => {
 			image: req.body.image || "/ghost/Default.png",
 			class: req.body.class,
 			role: req.body.role,
-			support: req.body.support,
-			aviator: req.body.aviator,
-			squad: req.body.squad || null, // ← new
-			imageKey: req.body.imageKey,
+						imageKey: req.body.imageKey,
 			weaponType: req.body.weaponType,
 			weapon: req.body.weapon,
 			sideArm: req.body.sideArm,
@@ -43,10 +40,7 @@ exports.getOperators = async (req, res) => {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 
 		// Populate squad so frontend gets { _id, name } instead of bare ObjectId
-		const operators = await Operator.find({ createdBy: userId }).populate(
-			"squad",
-			"name",
-		);
+		const operators = await Operator.find({ createdBy: userId });
 		res.status(200).json(operators);
 	} catch (error) {
 		console.error("Error Fetching Operators:", error.message);
@@ -62,7 +56,7 @@ exports.getOperatorById = async (req, res) => {
 		const operator = await Operator.findOne({
 			_id: req.params.id,
 			createdBy: req.userId,
-		}).populate("squad", "name");
+		});
 
 		if (!operator)
 			return res.status(404).json({ message: "Operator not found" });
@@ -74,19 +68,15 @@ exports.getOperatorById = async (req, res) => {
 };
 
 // ── PUT /api/operators/:id ────────────────────────────────────
-// req.body passthrough covers squad automatically
 exports.updateOperator = async (req, res) => {
 	try {
 		if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
-
-		// Coerce empty string → null so squad ref is cleared cleanly
-		if (req.body.squad === "") req.body.squad = null;
 
 		const operator = await Operator.findOneAndUpdate(
 			{ _id: req.params.id, createdBy: req.userId },
 			req.body,
 			{ new: true },
-		).populate("squad", "name");
+		);
 
 		if (!operator)
 			return res
