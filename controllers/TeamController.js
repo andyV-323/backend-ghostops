@@ -50,7 +50,7 @@ exports.getTeams = async (req, res) => {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
 		const teams = await Team.find({ createdBy: userId })
-			.populate("operators", "callSign image name role imageKey")
+			.populate("operators", "callSign image name role imageKey status")
 			.populate("assets");
 
 		res.json(teams);
