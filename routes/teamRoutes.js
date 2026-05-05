@@ -12,4 +12,8 @@ router.get("/:id", teamController.getTeamById);
 router.put("/:id", teamController.updateTeam);
 router.delete("/:id", teamController.deleteTeam);
 
+// Attach / detach teams
+router.post("/:id/attach", teamController.attachTeam);
+router.delete("/:id/attach/:attachedTeamId", teamController.detachTeam);
+
 module.exports = router;

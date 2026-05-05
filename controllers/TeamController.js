@@ -51,7 +51,14 @@ exports.getTeams = async (req, res) => {
 		}
 		const teams = await Team.find({ createdBy: userId })
 			.populate("operators", "callSign image name role imageKey status")
-			.populate("assets");
+			.populate("assets")
+			.populate({
+				path: "attachedTeams",
+				populate: [
+					{ path: "operators", select: "callSign image imageKey status" },
+					{ path: "assets" },
+				],
+			});
 
 		res.json(teams);
 	} catch (error) {
@@ -75,7 +82,14 @@ exports.getTeamById = async (req, res) => {
 			createdBy: userId,
 		})
 			.populate("operators")
-			.populate("assets");
+			.populate("assets")
+			.populate({
+				path: "attachedTeams",
+				populate: [
+					{ path: "operators", select: "callSign image imageKey status" },
+					{ path: "assets" },
+				],
+			});
 		if (!team) {
 			return res
 				.status(404)
@@ -142,6 +156,59 @@ exports.deleteTeam = async (req, res) => {
 		res.status(200).json({ message: "Team deleted successfully!" });
 	} catch (error) {
 		console.error("Error Deleting Team:", error.message);
+		res.status(500).json({ error: error.message });
+	}
+};
+
+// ATTACH a team to another team (adds to attachedTeams array)
+exports.attachTeam = async (req, res) => {
+	try {
+		const userId = req.userId;
+		const mainTeamId = req.params.id;
+		const { teamId } = req.body;
+
+		if (!userId) return res.status(401).json({ message: "Unauthorized: No User ID" });
+		if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) {
+			return res.status(400).json({ error: "Invalid teamId" });
+		}
+		if (mainTeamId === teamId) {
+			return res.status(400).json({ error: "A team cannot be attached to itself" });
+		}
+
+		const team = await Team.findOneAndUpdate(
+			{ _id: mainTeamId, createdBy: userId },
+			{ $addToSet: { attachedTeams: teamId } },
+			{ new: true },
+		);
+
+		if (!team) return res.status(404).json({ message: "Team not found or unauthorized" });
+
+		res.status(200).json({ message: "Team attached successfully", team });
+	} catch (error) {
+		console.error("Error attaching team:", error.message);
+		res.status(500).json({ error: error.message });
+	}
+};
+
+// DETACH a team from another team (removes from attachedTeams array)
+exports.detachTeam = async (req, res) => {
+	try {
+		const userId = req.userId;
+		const { id: mainTeamId, attachedTeamId } = req.params;
+
+		if (!userId) return res.status(401).json({ message: "Unauthorized: No User ID" });
+
+		const team = await Team.findOneAndUpdate(
+			{ _id: mainTeamId, createdBy: userId },
+			{ $pull: { attachedTeams: attachedTeamId } },
+			{ new: true },
+		);
+
+		if (!team) return res.status(404).json({ message: "Team not found or unauthorized" });
+
+		res.status(200).json({ message: "Team detached successfully", team });
+	} catch (error) {
+		console.error("Error detaching team:", error.message);
 		res.status(500).json({ error: error.message });
 	}
 };

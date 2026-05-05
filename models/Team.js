@@ -17,6 +17,12 @@ const teamSchema = new mongoose.Schema({
 			ref: "Vehicle",
 		},
 	],
+	attachedTeams: [
+		{
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Team",
+		},
+	],
 });
 
 module.exports = mongoose.model("Team", teamSchema);
