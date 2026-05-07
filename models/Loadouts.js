@@ -7,7 +7,7 @@ const loadoutsSchema = new mongoose.Schema({
 	createdBy: { type: String, required: true },
 	missionProfile: {
 		type: String,
-		enum: ["DA", "RECON", "SAB", "SUS", "COV"],
+		enum: ["Direct Action", "Low-Vis", "Recon"],
 	},
 	primaryType: { type: String, default: null },
 	primary: { type: String, default: null },

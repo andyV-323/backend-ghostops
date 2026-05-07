@@ -27,7 +27,7 @@ const loadoutSchema = new mongoose.Schema(
 	{
 		missionProfile: {
 			type: String,
-			enum: ["DA", "RECON", "SAB", "SUS", "COV"],
+			enum: ["Direct Action", "Low-vis", "Recon"],
 		},
 		primary: { type: weaponSlotSchema, default: () => ({}) },
 		secondary: { type: weaponSlotSchema, default: () => ({}) },
