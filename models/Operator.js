@@ -51,7 +51,8 @@ const operatorSchema = new mongoose.Schema({
 	imageKey: { type: String, default: null },
 	items: { type: [String], default: [] },
 	perks: { type: [String], default: [] },
-	loadouts: { type: [loadoutSchema], default: [] },
+	loadouts:       { type: [loadoutSchema], default: [] },
+	assignedKitIds: { type: [String], default: [] },
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);
