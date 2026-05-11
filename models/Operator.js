@@ -49,9 +49,8 @@ const operatorSchema = new mongoose.Schema({
 	image: { type: String, default: "/ghost/Default.png" },
 	role: { type: String },
 	imageKey: { type: String, default: null },
-	items: { type: [String], default: [] },
-	perks: { type: [String], default: [] },
-	loadouts:       { type: [loadoutSchema], default: [] },
+
+	loadouts: { type: [loadoutSchema], default: [] },
 	assignedKitIds: { type: [String], default: [] },
 });
 
