@@ -50,12 +50,12 @@ exports.getTeams = async (req, res) => {
 			return res.status(401).json({ message: "Unauthorized: No User ID" });
 		}
 		const teams = await Team.find({ createdBy: userId })
-			.populate("operators", "callSign image name role imageKey status")
+			.populate("operators", "callSign image name role imageKey status conditionLevel fatiguePoints")
 			.populate("assets")
 			.populate({
 				path: "attachedTeams",
 				populate: [
-					{ path: "operators", select: "callSign image imageKey status" },
+					{ path: "operators", select: "callSign image imageKey status conditionLevel fatiguePoints" },
 					{ path: "assets" },
 				],
 			});
@@ -86,7 +86,7 @@ exports.getTeamById = async (req, res) => {
 			.populate({
 				path: "attachedTeams",
 				populate: [
-					{ path: "operators", select: "callSign image imageKey status" },
+					{ path: "operators", select: "callSign image imageKey status conditionLevel" },
 					{ path: "assets" },
 				],
 			});
@@ -209,6 +209,34 @@ exports.detachTeam = async (req, res) => {
 		res.status(200).json({ message: "Team detached successfully", team });
 	} catch (error) {
 		console.error("Error detaching team:", error.message);
+		res.status(500).json({ error: error.message });
+	}
+};
+
+// UPDATE aoDeployedDays for a team (fatigue advance/reset)
+exports.updateFatigue = async (req, res) => {
+	try {
+		const userId = req.userId;
+		const teamId = req.params.id;
+
+		if (!userId) return res.status(401).json({ message: "Unauthorized: No User ID" });
+
+		const { aoDeployedDays } = req.body;
+		if (typeof aoDeployedDays !== "number" || aoDeployedDays < 0) {
+			return res.status(400).json({ error: "aoDeployedDays must be a non-negative number" });
+		}
+
+		const team = await Team.findOneAndUpdate(
+			{ _id: teamId, createdBy: userId },
+			{ $set: { aoDeployedDays } },
+			{ new: true },
+		);
+
+		if (!team) return res.status(404).json({ message: "Team not found or unauthorized" });
+
+		res.status(200).json({ message: "Fatigue updated", team });
+	} catch (error) {
+		console.error("Error updating fatigue:", error.message);
 		res.status(500).json({ error: error.message });
 	}
 };

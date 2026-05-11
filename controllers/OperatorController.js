@@ -14,12 +14,13 @@ exports.createOperator = async (req, res) => {
 			image: req.body.image || "/ghost/Default.png",
 			class: req.body.class,
 			role: req.body.role,
-						imageKey: req.body.imageKey,
+			imageKey: req.body.imageKey,
 			weaponType: req.body.weaponType,
 			weapon: req.body.weapon,
 			sideArm: req.body.sideArm,
 			items: req.body.items,
-			perks: req.body.perks, // ← was copying items by mistake
+			perks: req.body.perks,
+			conditionLevel: req.body.conditionLevel,
 		});
 
 		await operator.save();

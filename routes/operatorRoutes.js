@@ -110,6 +110,36 @@ router.put("/:id/status", async (req, res) => {
 	}
 });
 
+router.put("/:id/condition", async (req, res) => {
+	try {
+		const { id } = req.params;
+		const { conditionLevel, fatiguePoints } = req.body;
+
+		const valid = ["Fresh", "Steady", "Worn", "Degraded", "Spent"];
+		if (!conditionLevel || !valid.includes(conditionLevel)) {
+			return res.status(400).json({ error: "Invalid conditionLevel" });
+		}
+
+		const update = { conditionLevel };
+		if (typeof fatiguePoints === "number" && fatiguePoints >= 0) {
+			update.fatiguePoints = fatiguePoints;
+		}
+
+		const updated = await Operator.findByIdAndUpdate(
+			id,
+			{ $set: update },
+			{ new: true },
+		);
+
+		if (!updated) return res.status(404).json({ error: "Operator not found" });
+
+		res.json(updated);
+	} catch (error) {
+		console.error("ERROR updating operator condition:", error);
+		res.status(500).json({ error: "Failed to update condition" });
+	}
+});
+
 // ✅ BASE CRUD ROUTES
 router.post("/", operatorController.createOperator);
 router.get("/", operatorController.getOperators);
