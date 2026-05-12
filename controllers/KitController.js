@@ -9,10 +9,12 @@ exports.createKit = async (req, res) => {
 		const kit = new Kit({
 			createdBy: userId,
 			name:      req.body.name,
+			type:      req.body.type      || "specialty",
 			primary:   req.body.primary   || {},
 			secondary: req.body.secondary || {},
 			handgun:   req.body.handgun   || {},
 			items:     req.body.items     || [],
+			perks:     req.body.perks     || [],
 		});
 
 		await kit.save();
