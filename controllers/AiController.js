@@ -132,6 +132,79 @@ exports.generateCampaign = async (req, res) => {
 	}
 };
 
+// ─── POST /api/ai/bio ─────────────────────────────────────────────────────────
+// Body:
+//   callSign      — string (required)
+//   operatorClass — string  (e.g. "Assault")
+//   role          — string  (e.g. "Breacher")
+//   status        — string  (Active | Injured | KIA)
+//   userNote      — string  (optional extra context from user)
+//   kiaAO         — string  (AO location, only for KIA)
+//   kiaInjury     — string  (cause of death, only for KIA)
+
+exports.generateBio = async (req, res) => {
+	try {
+		const { callSign, operatorClass, role, status, userNote, kiaAO, kiaInjury } = req.body;
+
+		if (!callSign) {
+			return res.status(400).json({ message: "callSign is required" });
+		}
+
+		const key = process.env.GROQ_KEY;
+		if (!key) {
+			return res.status(500).json({ message: "AI service not configured on server" });
+		}
+
+		const identityParts = [operatorClass, role].filter(Boolean).join(", ");
+
+		let userPrompt = `Write a 3-4 sentence classified operator bio for callsign "${callSign}"`;
+		if (identityParts) userPrompt += `, ${identityParts}`;
+		userPrompt += `. Status: ${status || "Active"}.`;
+		if (userNote) userPrompt += ` Additional context: ${userNote}.`;
+		userPrompt += ` Focus on their specialty, demeanor, and operational value to the element. Tight military prose — no fluff, no filler.`;
+
+		if (status === "KIA" && kiaAO) {
+			userPrompt += ` After the bio, on a new paragraph, write a single KIA record sentence: "${callSign} was killed in action at ${kiaAO}`;
+			if (kiaInjury) userPrompt += ` — ${kiaInjury}`;
+			userPrompt += `." Use past tense throughout that sentence.`;
+		}
+
+		const groqRes = await axios.post(
+			GROQ_URL,
+			{
+				model:       MODEL,
+				max_tokens:  350,
+				temperature: 0.65,
+				messages: [
+					{
+						role:    "system",
+						content: "You are a Ghost Recon special operations unit biographer writing classified operator dossiers. Write in terse, direct military prose. No markdown, no bullet points, no headers. Return only the bio text — nothing else.",
+					},
+					{ role: "user", content: userPrompt },
+				],
+			},
+			{
+				headers: {
+					Authorization:  `Bearer ${key}`,
+					"Content-Type": "application/json",
+				},
+			},
+		);
+
+		const bio = groqRes.data.choices?.[0]?.message?.content?.trim() ?? "";
+		res.status(200).json({ bio });
+	} catch (error) {
+		console.error("Bio generation error:", error.message);
+		const upstream = error.response;
+		if (upstream) {
+			return res
+				.status(upstream.status)
+				.json({ message: `Groq ${upstream.status}: ${JSON.stringify(upstream.data)}` });
+		}
+		res.status(500).json({ message: error.message });
+	}
+};
+
 // ─── POST /api/ai/aar ─────────────────────────────────────────────────────────
 // Body:
 //   systemPrompt — string

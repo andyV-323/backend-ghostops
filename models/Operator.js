@@ -41,6 +41,7 @@ const operatorSchema = new mongoose.Schema({
 	createdBy: { type: String, required: true },
 	callSign: { type: String, required: true },
 	class: { type: String, default: "Assault" },
+	bio: { type: String, default: null },
 	status: {
 		type: String,
 		enum: ["Active", "Injured", "KIA"],
@@ -54,7 +55,6 @@ const operatorSchema = new mongoose.Schema({
 	imageKeyRecon: { type: String, default: null },
 	imageKeyCovert: { type: String, default: null },
 	activeKitId: { type: String, default: null },
-
 	loadouts: { type: [loadoutSchema], default: [] },
 	assignedKitIds: { type: [String], default: [] },
 

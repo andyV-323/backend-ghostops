@@ -13,6 +13,7 @@ exports.createOperator = async (req, res) => {
 			callSign: req.body.callSign,
 			image: req.body.image || "/ghost/Default.png",
 			class: req.body.class,
+			bio: req.body.bio,
 			role: req.body.role,
 			imageKey: req.body.imageKey || null,
 			imageKeySpecialty: req.body.imageKeySpecialty || null,
