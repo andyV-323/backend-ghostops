@@ -25,14 +25,13 @@ const weaponSlotSchema = new mongoose.Schema(
 
 const loadoutSchema = new mongoose.Schema(
 	{
-		missionProfile: {
-			type: String,
-			enum: ["Direct Action", "Low-vis", "Recon"],
-		},
 		primary: { type: weaponSlotSchema, default: () => ({}) },
 		secondary: { type: weaponSlotSchema, default: () => ({}) },
 		// Handgun is always HDG type — weaponType stored for consistency
 		handgun: { type: weaponSlotSchema, default: () => ({}) },
+		helmet: { type: String, default: null },
+		vest: { type: String, default: null },
+		belt: { type: String, default: null },
 	},
 	{ _id: false },
 );
@@ -50,13 +49,8 @@ const operatorSchema = new mongoose.Schema({
 	image: { type: String, default: "/ghost/Default.png" },
 	role: { type: String },
 	imageKey: { type: String, default: null },
-	imageKeySpecialty: { type: String, default: null },
-	imageKeyDirectAction: { type: String, default: null },
-	imageKeyRecon: { type: String, default: null },
-	imageKeyCovert: { type: String, default: null },
-	activeKitId: { type: String, default: null },
-	loadouts: { type: [loadoutSchema], default: [] },
 	assignedKitIds: { type: [String], default: [] },
+	loadouts: { type: [loadoutSchema], default: [] },
 
 	conditionLevel: {
 		type: String,

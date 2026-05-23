@@ -25,16 +25,14 @@ const weaponSlotSchema = new mongoose.Schema(
 const kitSchema = new mongoose.Schema({
 	createdBy: { type: String, required: true },
 	name: { type: String, required: true },
-	type: {
-		type: String,
-		enum: ["specialty", "directAction", "recon", "covert"],
-		default: "specialty",
-	},
 	primary: { type: weaponSlotSchema, default: () => ({}) },
 	secondary: { type: weaponSlotSchema, default: () => ({}) },
 	handgun: { type: weaponSlotSchema, default: () => ({}) },
 	items: { type: [String], default: [] },
 	perks: { type: [String], default: [] },
+	helmet: { type: String, default: null },
+	vest: { type: String, default: null },
+	belt: { type: String, default: null },
 });
 
 module.exports = mongoose.model("Kit", kitSchema);
