@@ -140,6 +140,47 @@ router.put("/:id/condition", async (req, res) => {
 	}
 });
 
+// Inline helpers — mirrors frontend config/fatigue.js thresholds
+function calcConditionLevel(points) {
+	const thresholds = [0, 4, 8, 12, 16];
+	const levels = ["Fresh", "Steady", "Worn", "Degraded", "Spent"];
+	let level = "Fresh";
+	for (let i = thresholds.length - 1; i >= 0; i--) {
+		if (points >= thresholds[i]) { level = levels[i]; break; }
+	}
+	return level;
+}
+
+function restTarget(points) {
+	// CI (>=11) → top of Degraded band (10); Degraded (6-10) → top of Ready band (5); Ready → 0
+	if (points >= 11) return 10;
+	if (points >= 6) return 5;
+	return 0;
+}
+
+// ✅ REST ROUTE — reduce fatigue by one readiness band
+router.put("/:id/rest", async (req, res) => {
+	try {
+		const { id } = req.params;
+		const operator = await Operator.findById(id);
+		if (!operator) return res.status(404).json({ error: "Operator not found" });
+
+		const newPoints = restTarget(operator.fatiguePoints ?? 0);
+		const newLevel = calcConditionLevel(newPoints);
+
+		const updated = await Operator.findByIdAndUpdate(
+			id,
+			{ $set: { fatiguePoints: newPoints, conditionLevel: newLevel } },
+			{ new: true },
+		);
+
+		res.json(updated);
+	} catch (error) {
+		console.error("ERROR resting operator:", error);
+		res.status(500).json({ error: "Failed to rest operator" });
+	}
+});
+
 // ✅ BASE CRUD ROUTES
 router.post("/", operatorController.createOperator);
 router.get("/", operatorController.getOperators);
