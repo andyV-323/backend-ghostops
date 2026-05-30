@@ -52,12 +52,6 @@ const operatorSchema = new mongoose.Schema({
 	assignedKitIds: { type: [String], default: [] },
 	loadouts: { type: [loadoutSchema], default: [] },
 
-	conditionLevel: {
-		type: String,
-		enum: ["Fresh", "Steady", "Worn", "Degraded", "Spent"],
-		default: "Fresh",
-	},
-	fatiguePoints: { type: Number, default: 0 },
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);

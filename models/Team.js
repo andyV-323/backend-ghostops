@@ -23,7 +23,6 @@ const teamSchema = new mongoose.Schema({
 			ref: "Team",
 		},
 	],
-	aoDeployedDays: { type: Number, default: 0 },
 });
 
 module.exports = mongoose.model("Team", teamSchema);

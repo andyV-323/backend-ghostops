@@ -18,7 +18,6 @@ exports.createOperator = async (req, res) => {
 			imageKey: req.body.imageKey || null,
 			items: req.body.items,
 			perks: req.body.perks,
-			conditionLevel: req.body.conditionLevel,
 		});
 
 		await operator.save();
