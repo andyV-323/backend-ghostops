@@ -14,7 +14,6 @@ exports.createOperator = async (req, res) => {
 			image: req.body.image || "/ghost/Default.png",
 			class: req.body.class,
 			bio: req.body.bio,
-			role: req.body.role,
 			imageKey: req.body.imageKey || null,
 			items: req.body.items,
 			perks: req.body.perks,

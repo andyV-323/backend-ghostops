@@ -8,16 +8,28 @@ const axios = require("axios");
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL    = "llama-3.3-70b-versatile";
 
-// ─── POST /api/ai/campaign ────────────────────────────────────────────────────
+// ─── POST /api/ai/advisory ────────────────────────────────────────────────────
 // Body:
-//   systemPrompt         — string
-//   userPrompt           — string
-//   province             — string  (e.g. "FenBog")
+//   systemPrompt          — string
+//   userPrompt            — string
+//   province              — string  (e.g. "FenBog")
 //   provinceLocationNames — string[] (exact location names from the province)
+//   opType                — string  (e.g. "intel_gathering", "direct_action")
 
-exports.generateCampaign = async (req, res) => {
+const RECON_OP_TYPES  = new Set(["intel_gathering"]);
+const VALID_POSTURES  = new Set(["stealth", "balanced", "aggressive"]);
+const VALID_OBJ_MODES = new Set(["ao_exploration", "fixed_location"]);
+const VALID_INFIL_METHODS = new Set([
+	"HALO", "HAHO", "helo_insertion", "helo_landing_open_field",
+	"vehicle", "on_foot", "aquatic",
+]);
+const VALID_CLASSES = new Set([
+	"Assault", "Engineer", "Panther", "Sharpshooter", "Medic", "Echelon", "Pathfinder",
+]);
+
+exports.generateAdvisory = async (req, res) => {
 	try {
-		const { systemPrompt, userPrompt, province, provinceLocationNames } = req.body;
+		const { systemPrompt, userPrompt, province, provinceLocationNames, opType } = req.body;
 
 		if (!systemPrompt || !userPrompt || !province || !Array.isArray(provinceLocationNames)) {
 			return res.status(400).json({ message: "Missing required fields" });
@@ -28,16 +40,20 @@ exports.generateCampaign = async (req, res) => {
 			return res.status(500).json({ message: "AI service not configured on server" });
 		}
 
+		// Prepend a per-request uniqueness seed to break response caching
+		const seed = `[SEED:${Date.now().toString(36)}] `;
+		const seededSystem = seed + systemPrompt;
+
 		const groqRes = await axios.post(
 			GROQ_URL,
 			{
 				model:           MODEL,
-				max_tokens:      2400,
-				temperature:     0.72,
+				max_tokens:      3000,
+				temperature:     0.88,
 				response_format: { type: "json_object" },
 				messages: [
-					{ role: "system", content: systemPrompt },
-					{ role: "user",   content: userPrompt   },
+					{ role: "system", content: seededSystem },
+					{ role: "user",   content: userPrompt    },
 				],
 			},
 			{
@@ -51,77 +67,90 @@ exports.generateCampaign = async (req, res) => {
 		const raw = groqRes.data.choices?.[0]?.message?.content?.trim() ?? "";
 
 		// ── Parse ─────────────────────────────────────────────────────────────
-		let campaign;
+		let advisory;
 		try {
-			campaign = JSON.parse(raw);
+			advisory = JSON.parse(raw);
 		} catch {
 			return res.status(422).json({
-				message: "Campaign generation returned invalid JSON. Try again.",
+				message: "Advisory generation returned invalid JSON. Try again.",
 			});
 		}
 
-		// ── Validate location names (structure-aware) ─────────────────────────
-		const validLoc = (loc) =>
-			provinceLocationNames.some((name) => name.trim() === loc?.trim());
-
-		const structure = campaign.structure;
-
-		if (structure === "direct_action") {
-			// Structure A — validate team objectives
-			if (!Array.isArray(campaign.teams) || !campaign.teams.length) {
-				return res.status(422).json({
-					message: "Campaign generation returned no teams. Try again.",
-				});
-			}
-			const badTeams = campaign.teams.filter((t) => !validLoc(t.objective));
-			if (badTeams.length) {
-				const details = badTeams.map((t) => `"${t.objective}"`).join(", ");
-				return res.status(422).json({
-					message: `AI selected invalid location(s) not found in ${province}: ${details}. Try generating again.`,
-				});
-			}
-		} else if (structure === "intel_then_strike") {
-			// Structure B — act1 and act2 are arrays of phases
-			if (!Array.isArray(campaign.act1) || !campaign.act1.length) {
-				return res.status(422).json({
-					message: "Campaign generation returned no act1 phases. Try again.",
-				});
-			}
-			if (!Array.isArray(campaign.act2) || !campaign.act2.length) {
-				return res.status(422).json({
-					message: "Campaign generation returned no act2 phases. Try again.",
-				});
-			}
-			const allActPhases = [...campaign.act1, ...campaign.act2];
-			const badLocs = allActPhases.filter((p) => !validLoc(p.objective));
-			if (badLocs.length) {
-				const details = badLocs.map((p) => `"${p.objective}"`).join(", ");
-				return res.status(422).json({
-					message: `AI selected invalid location(s) not found in ${province}: ${details}. Try generating again.`,
-				});
-			}
-		} else {
-			// Legacy sequential phases
-			if (!campaign.phases?.length) {
-				return res.status(422).json({
-					message: "Campaign generation returned no phases. Try again.",
-				});
-			}
-			const invalidPhases = campaign.phases.filter(
-				(p) => !validLoc(p.location),
-			);
-			if (invalidPhases.length) {
-				const details = invalidPhases.map((p) => `"${p.location}"`).join(", ");
-				return res.status(422).json({
-					message: `AI selected invalid location(s) not found in ${province}: ${details}. Try generating again.`,
-				});
-			}
-			campaign.phases = campaign.phases.map((p) => ({ ...p, province }));
+		// ── Structural validation ─────────────────────────────────────────────
+		if (!Array.isArray(advisory.courses) || advisory.courses.length !== 2) {
+			return res.status(422).json({
+				message: "Advisory must contain exactly 2 courses of action. Try again.",
+			});
 		}
 
-		res.status(200).json({ campaign });
+		const courseIds = advisory.courses.map((c) => c.id);
+		if (!advisory.recommendedCOA || !courseIds.includes(advisory.recommendedCOA)) {
+			return res.status(422).json({
+				message: "recommendedCOA must match one of the course ids. Try again.",
+			});
+		}
+
+		if (advisory.objectiveMode && !VALID_OBJ_MODES.has(advisory.objectiveMode)) {
+			return res.status(422).json({
+				message: `Invalid objectiveMode: "${advisory.objectiveMode}". Try again.`,
+			});
+		}
+
+		// ── Per-COA validation ────────────────────────────────────────────────
+		for (const coa of advisory.courses) {
+			if (!VALID_POSTURES.has(coa.posture)) {
+				return res.status(422).json({
+					message: `COA "${coa.id}" has invalid posture: "${coa.posture}". Try again.`,
+				});
+			}
+
+			const method = coa.infiltration?.method;
+			if (!VALID_INFIL_METHODS.has(method)) {
+				return res.status(422).json({
+					message: `COA "${coa.id}" has invalid infiltration method: "${method}". Try again.`,
+				});
+			}
+
+			if (!Array.isArray(coa.classes) || !coa.classes.length) {
+				return res.status(422).json({
+					message: `COA "${coa.id}" is missing classes array. Try again.`,
+				});
+			}
+
+			const badClasses = coa.classes.filter((c) => !VALID_CLASSES.has(c));
+			if (badClasses.length) {
+				return res.status(422).json({
+					message: `COA "${coa.id}" contains invalid class(es): ${badClasses.join(", ")}. Try again.`,
+				});
+			}
+
+			if (typeof coa.teamSize !== "number" || coa.teamSize < 1 || coa.teamSize > 4) {
+				return res.status(422).json({
+					message: `COA "${coa.id}" teamSize must be an integer 1–4. Try again.`,
+				});
+			}
+		}
+
+		// ── Location validation for DA/strike ops ─────────────────────────────
+		// Recon/intel ops are AO-level — no fixed location to validate against.
+		if (!RECON_OP_TYPES.has(opType) && provinceLocationNames.length > 0) {
+			const validLoc = (loc) =>
+				provinceLocationNames.some((n) => n.trim() === loc?.trim());
+
+			for (const coa of advisory.courses) {
+				const exfilRally = coa.exfil?.rallyPoint;
+				// Only validate fields that are expected to be exact location names.
+				// Free-text approach/execution strings are intentionally not validated.
+				if (exfilRally && !validLoc(exfilRally)) {
+					// Rally points are often descriptive strings, not location names — skip hard fail.
+					// Log for debugging but don't reject the response.
+				}
+			}
+		}
+
+		res.status(200).json({ advisory });
 	} catch (error) {
-		console.error("Campaign generation error:", error.message);
+		console.error("Advisory generation error:", error.message);
 		const upstream = error.response;
 		if (upstream) {
 			return res

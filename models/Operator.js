@@ -39,7 +39,7 @@ const loadoutSchema = new mongoose.Schema(
 const operatorSchema = new mongoose.Schema({
 	createdBy: { type: String, required: true },
 	callSign: { type: String, required: true },
-	class: { type: String, default: "Assault" },
+	class: { type: [String], default: [] },
 	bio: { type: String, default: null },
 	status: {
 		type: String,
@@ -47,11 +47,9 @@ const operatorSchema = new mongoose.Schema({
 		default: "Active",
 	},
 	image: { type: String, default: "/ghost/Default.png" },
-	role: { type: String },
 	imageKey: { type: String, default: null },
 	assignedKitIds: { type: [String], default: [] },
 	loadouts: { type: [loadoutSchema], default: [] },
-
 });
 
 module.exports = mongoose.model("Operator", operatorSchema);
