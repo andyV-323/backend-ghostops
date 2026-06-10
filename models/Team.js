@@ -23,6 +23,17 @@ const teamSchema = new mongoose.Schema({
 			ref: "Team",
 		},
 	],
+	// Maps operatorId (string) → slot class name assigned on this team
+	operatorRoles: {
+		type: Map,
+		of: String,
+		default: {},
+	},
+	// The operator designated as team lead (string ObjectId)
+	leadId: {
+		type: String,
+		default: null,
+	},
 });
 
 module.exports = mongoose.model("Team", teamSchema);
