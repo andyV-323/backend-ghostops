@@ -10,14 +10,14 @@ exports.createTeam = async (req, res) => {
 		// Validate required fields
 		const { createdBy, name, operators, assets } = req.body;
 
-		if (!createdBy || !name || !Array.isArray(operators)) {
+		if (!createdBy || !name) {
 			return res
 				.status(400)
-				.json({ error: "Missing required fields: createdBy, name, operators" });
+				.json({ error: "Missing required fields: createdBy, name" });
 		}
 
 		//valid MongoDB ObjectIds
-		const validOperatorIds = operators.filter((opId) =>
+		const validOperatorIds = (Array.isArray(operators) ? operators : []).filter((opId) =>
 			mongoose.Types.ObjectId.isValid(opId),
 		);
 		const validAssetIds = (Array.isArray(assets) ? assets : []).filter(
