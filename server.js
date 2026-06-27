@@ -11,6 +11,7 @@ const vehicleRoutes = require("./routes/vehicleRoutes");
 const missionRoutes = require("./routes/missionRoutes");
 const aiRoutes      = require("./routes/aiRoutes");
 const kitRoutes     = require("./routes/kitRoutes");
+const contactRoutes = require("./routes/contactRoutes");
 const app = express();
 
 app.use(express.json({ limit: "50mb" }));
@@ -63,6 +64,9 @@ mongoose
 	.connect(process.env.MONGO_URI)
 	.then(() => console.log("MongoDB Connected"))
 	.catch((err) => console.error("MongoDB Connection Error:", err));
+
+// Public contact form — no auth
+app.use("/api/contact", contactRoutes);
 
 //Health Check Route
 app.get("/api/health", (req, res) =>
