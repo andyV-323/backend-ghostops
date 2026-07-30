@@ -12,6 +12,7 @@ const missionRoutes = require("./routes/missionRoutes");
 const aiRoutes      = require("./routes/aiRoutes");
 const kitRoutes     = require("./routes/kitRoutes");
 const contactRoutes = require("./routes/contactRoutes");
+const shortLinkRoutes = require("./routes/shortLinkRoutes");
 const app = express();
 
 app.use(express.json({ limit: "50mb" }));
@@ -67,6 +68,10 @@ mongoose
 
 // Public contact form — no auth
 app.use("/api/contact", contactRoutes);
+
+// Public link shortener + redirect for Ops Builder share links — no auth
+// (routes define their own full paths: POST /api/shorten, GET /s/:code)
+app.use(shortLinkRoutes);
 
 //Health Check Route
 app.get("/api/health", (req, res) =>
