@@ -17,8 +17,23 @@ function isValidEmail(email) {
 	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
 }
 
+const MIN_FILL_TIME_MS = 2000; // real users can't fill+submit a form faster than this
+
 exports.handleContact = async (req, res) => {
 	try {
+		// ── Bot filtering ──────────────────────────────────────────
+		// Honeypot: real visitors never see or fill this field.
+		// Timing: bots submit instantly; humans take at least a couple seconds.
+		const isBot =
+			sanitize(req.body?.company, 200) !== "" ||
+			!Number.isFinite(req.body?.formStartedAt) ||
+			Date.now() - req.body.formStartedAt < MIN_FILL_TIME_MS;
+
+		if (isBot) {
+			// Report success without sending anything — don't tip the bot off.
+			return res.status(200).json({ message: "Message sent successfully." });
+		}
+
 		const name    = sanitize(req.body?.name,    100);
 		const email   = sanitize(req.body?.email,   254).toLowerCase();
 		const message = sanitize(req.body?.message, 4000);

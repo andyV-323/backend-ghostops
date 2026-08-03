@@ -6,7 +6,7 @@ const router = express.Router();
 
 const limiter = rateLimit({
 	windowMs: 15 * 60 * 1000,  // 15-minute window
-	max: 5,                      // max 5 submissions per IP per window
+	max: 3,                      // max 3 submissions per IP per window
 	standardHeaders: true,
 	legacyHeaders: false,
 	message: { error: "Too many messages sent. Please wait 15 minutes and try again." },
