@@ -16,4 +16,10 @@ router.delete("/:id", teamController.deleteTeam);
 router.post("/:id/attach", teamController.attachTeam);
 router.delete("/:id/attach/:attachedTeamId", teamController.detachTeam);
 
+// Active-slot / reserve management
+router.patch("/:id/assign-slot", teamController.assignSlot);
+router.patch("/:id/reorder-reserve", teamController.reorderReserve);
+router.patch("/:id/promote-reserve", teamController.promoteReserve);
+router.patch("/:id/add", teamController.addToTeam);
+
 module.exports = router;
