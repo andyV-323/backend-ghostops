@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const MEMBER_POPULATE = [
 	{ path: "activeSlots.operatorId" },
 	{ path: "reserves.operatorId" },
+	{ path: "casualties.operatorId" },
 ];
 
 const ATTACHED_TEAM_POPULATE = {
@@ -24,7 +25,11 @@ async function pullFromOtherTeams(userId, excludeTeamId, operatorId) {
 	const others = await Team.find({
 		createdBy: userId,
 		_id: { $ne: excludeTeamId },
-		$or: [{ "activeSlots.operatorId": operatorId }, { "reserves.operatorId": operatorId }],
+		$or: [
+			{ "activeSlots.operatorId": operatorId },
+			{ "reserves.operatorId": operatorId },
+			{ "casualties.operatorId": operatorId },
+		],
 	});
 
 	let carried = null;
@@ -39,8 +44,14 @@ async function pullFromOtherTeams(userId, excludeTeamId, operatorId) {
 			carried = carried || { operatorId, class: other.reserves[reserveIdx].class };
 			other.reserves.splice(reserveIdx, 1);
 		}
+		const casualtyIdx = (other.casualties || []).findIndex((m) => sameOperator(m, operatorId));
+		if (casualtyIdx >= 0) {
+			carried = carried || { operatorId, class: other.casualties[casualtyIdx].class };
+			other.casualties.splice(casualtyIdx, 1);
+		}
 		other.markModified("activeSlots");
 		other.markModified("reserves");
+		other.markModified("casualties");
 		await other.save();
 	}
 	return carried;
@@ -271,12 +282,17 @@ exports.removeOperatorFromTeams = async (req, res) => {
 		}
 
 		const teams = await Team.find({
-			$or: [{ "activeSlots.operatorId": operatorId }, { "reserves.operatorId": operatorId }],
+			$or: [
+				{ "activeSlots.operatorId": operatorId },
+				{ "reserves.operatorId": operatorId },
+				{ "casualties.operatorId": operatorId },
+			],
 		});
 
 		for (const team of teams) {
 			team.activeSlots = team.activeSlots.map((m) => (sameOperator(m, operatorId) ? null : m));
 			team.reserves = team.reserves.filter((m) => !sameOperator(m, operatorId));
+			team.casualties = (team.casualties || []).filter((m) => !sameOperator(m, operatorId));
 			await team.save();
 		}
 
@@ -316,6 +332,7 @@ exports.assignSlot = async (req, res) => {
 
 		const slotIdx = team.activeSlots.findIndex((m) => sameOperator(m, operatorId));
 		const reserveIdx = team.reserves.findIndex((m) => sameOperator(m, operatorId));
+		const casualtyIdx = (team.casualties || []).findIndex((m) => sameOperator(m, operatorId));
 
 		let member;
 		if (slotIdx >= 0) {
@@ -324,6 +341,9 @@ exports.assignSlot = async (req, res) => {
 		} else if (reserveIdx >= 0) {
 			member = team.reserves[reserveIdx];
 			team.reserves.splice(reserveIdx, 1);
+		} else if (casualtyIdx >= 0) {
+			member = team.casualties[casualtyIdx];
+			team.casualties.splice(casualtyIdx, 1);
 		} else {
 			member = (await pullFromOtherTeams(userId, teamId, operatorId)) || { operatorId, class: null };
 		}
@@ -343,6 +363,7 @@ exports.assignSlot = async (req, res) => {
 
 		team.markModified("activeSlots");
 		team.markModified("reserves");
+		team.markModified("casualties");
 		await team.save();
 		await populateTeam(team);
 
@@ -445,6 +466,17 @@ exports.addToTeam = async (req, res) => {
 
 		const existingSlotIdx = team.activeSlots.findIndex((m) => sameOperator(m, operatorId));
 		const existingReserveIdx = team.reserves.findIndex((m) => sameOperator(m, operatorId));
+		const existingCasualtyIdx = (team.casualties || []).findIndex((m) => sameOperator(m, operatorId));
+
+		const placeInLowestOpenSlot = (member) => {
+			const emptyIdx = team.activeSlots.findIndex((m) => !m);
+			if (emptyIdx >= 0) {
+				team.activeSlots[emptyIdx] = member;
+				return { type: "slot", slot: emptyIdx + 1 };
+			}
+			team.reserves.push(member);
+			return { type: "reserve" };
+		};
 
 		let destination;
 		if (existingSlotIdx >= 0) {
@@ -453,21 +485,19 @@ exports.addToTeam = async (req, res) => {
 		} else if (existingReserveIdx >= 0) {
 			if (classUsed !== undefined) team.reserves[existingReserveIdx].class = classUsed;
 			destination = { type: "reserve" };
+		} else if (existingCasualtyIdx >= 0) {
+			const [member] = team.casualties.splice(existingCasualtyIdx, 1);
+			if (classUsed !== undefined) member.class = classUsed;
+			destination = placeInLowestOpenSlot(member);
 		} else {
 			const carried = await pullFromOtherTeams(userId, teamId, operatorId);
 			const member = { operatorId, class: classUsed ?? carried?.class ?? null };
-			const emptyIdx = team.activeSlots.findIndex((m) => !m);
-			if (emptyIdx >= 0) {
-				team.activeSlots[emptyIdx] = member;
-				destination = { type: "slot", slot: emptyIdx + 1 };
-			} else {
-				team.reserves.push(member);
-				destination = { type: "reserve" };
-			}
+			destination = placeInLowestOpenSlot(member);
 		}
 
 		team.markModified("activeSlots");
 		team.markModified("reserves");
+		team.markModified("casualties");
 		await team.save();
 		await populateTeam(team);
 

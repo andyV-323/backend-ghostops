@@ -16,17 +16,28 @@ const teamMemberSchema = new mongoose.Schema(
 	{ _id: false },
 );
 
-async function validateTeamMembers(TeamModel, { _id, createdBy, activeSlots, reserves }) {
+// operatorId is sometimes a bare ObjectId and sometimes a populated Operator
+// object (callers that round-trip an already-populated team back into an
+// update) — String() on a populated object gives "[object Object]", not its
+// id, so every member falsely collides with every other. Unwrap ._id first.
+function memberOperatorIdStr(member) {
+	const id = member.operatorId;
+	if (id && typeof id === "object" && id._id) return String(id._id);
+	return String(id);
+}
+
+async function validateTeamMembers(TeamModel, { _id, createdBy, activeSlots, reserves, casualties }) {
 	const slots = activeSlots ?? [];
 	const res = reserves ?? [];
+	const cas = casualties ?? [];
 
 	if (slots.length !== 4) {
 		throw new Error("activeSlots must have exactly 4 entries");
 	}
 
 	const seen = new Set();
-	for (const member of [...slots.filter(Boolean), ...res]) {
-		const id = String(member.operatorId);
+	for (const member of [...slots.filter(Boolean), ...res, ...cas]) {
+		const id = memberOperatorIdStr(member);
 		if (seen.has(id)) {
 			throw new Error(`Operator ${id} appears more than once on this team`);
 		}
@@ -42,6 +53,7 @@ async function validateTeamMembers(TeamModel, { _id, createdBy, activeSlots, res
 		$or: [
 			{ "activeSlots.operatorId": { $in: ids } },
 			{ "reserves.operatorId": { $in: ids } },
+			{ "casualties.operatorId": { $in: ids } },
 		],
 	}).lean();
 
@@ -70,6 +82,11 @@ const teamSchema = new mongoose.Schema({
 	// Ordered, unbounded — index 0 is next man up. Reserve entries never
 	// carry a slot number in any representation.
 	reserves: { type: [teamMemberSchema], default: [] },
+	// Operators whose status went Injured/KIA — moved here automatically by
+	// the operator status route (see routes/operatorRoutes.js), off their
+	// active slot or out of reserves. They stay on the team, just not
+	// deployable until their status changes back.
+	casualties: { type: [teamMemberSchema], default: [] },
 	assets: [
 		{
 			type: mongoose.Schema.Types.ObjectId,
@@ -107,7 +124,7 @@ teamSchema.pre("findOneAndUpdate", async function (next) {
 	try {
 		const update = this.getUpdate() || {};
 		const set = update.$set || update;
-		const touchesMembers = "activeSlots" in set || "reserves" in set;
+		const touchesMembers = "activeSlots" in set || "reserves" in set || "casualties" in set;
 		if (!touchesMembers) return next();
 
 		const current = await this.model.findOne(this.getQuery()).lean();
@@ -118,6 +135,7 @@ teamSchema.pre("findOneAndUpdate", async function (next) {
 			createdBy: current.createdBy,
 			activeSlots: set.activeSlots ?? current.activeSlots,
 			reserves: set.reserves ?? current.reserves,
+			casualties: set.casualties ?? current.casualties,
 		});
 		next();
 	} catch (err) {

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const operatorController = require("../controllers/OperatorController");
 const Operator = require("../models/Operator");
+const Team = require("../models/Team");
 const upload = require("../middleware/uploadMiddleware");
 const { uploadImageToS3, deleteImageFromS3 } = require("../utils/S3utils");
 
@@ -101,6 +102,39 @@ router.put("/:id/status", async (req, res) => {
 
 		if (!updatedOperator) {
 			return res.status(404).json({ error: "Operator not found" });
+		}
+
+		// This route is the single choke point every status-change caller goes
+		// through (assignRandomInjury/assignRandomKIAInjury/assignUnknownFate),
+		// so hooking the Casualties move here covers "from anywhere in the app"
+		// without duplicating the move logic at each call site. Only entry into
+		// Casualties is handled — reverting status back to Active intentionally
+		// leaves placement alone (out of scope).
+		if ((status === "Injured" || status === "KIA") && req.userId) {
+			const team = await Team.findOne({
+				createdBy: req.userId,
+				$or: [
+					{ "activeSlots.operatorId": id },
+					{ "reserves.operatorId": id },
+				],
+			});
+
+			if (team) {
+				const alreadyCasualty = (team.casualties || []).some(
+					(m) => m && String(m.operatorId) === id,
+				);
+				if (!alreadyCasualty) {
+					const member =
+						team.activeSlots.find((m) => m && String(m.operatorId) === id) ||
+						team.reserves.find((m) => String(m.operatorId) === id);
+					team.activeSlots = team.activeSlots.map((m) =>
+						m && String(m.operatorId) === id ? null : m,
+					);
+					team.reserves = team.reserves.filter((m) => String(m.operatorId) !== id);
+					team.casualties = [...(team.casualties || []), member];
+					await team.save();
+				}
+			}
 		}
 
 		res.json(updatedOperator);
